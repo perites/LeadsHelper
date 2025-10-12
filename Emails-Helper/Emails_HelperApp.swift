@@ -1,0 +1,17 @@
+//
+//  Emails_HelperApp.swift
+//  Emails-Helper
+//
+//  Created by Mykyta Krementar on 12/10/2025.
+//
+
+import SwiftUI
+
+@main
+struct Emails_HelperApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}
