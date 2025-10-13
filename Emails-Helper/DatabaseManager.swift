@@ -39,6 +39,7 @@ enum LeadsTable {
     static let email = SQLite.Expression<String>("email")
     static let importName = SQLite.Expression<String>("importName")
     static let domain = SQLite.Expression<Int64>("domainId")
+    static let isActive = SQLite.Expression<Bool>("isActive")
 
     static func createTable(in db: Connection?) {
         guard let db else { return }
@@ -48,6 +49,7 @@ enum LeadsTable {
                     t.column(id, primaryKey: .autoincrement)
                     t.column(email)
                     t.column(importName)
+                    t.column(isActive)
                     t.column(domain)
 
                     t.foreignKey(
@@ -72,7 +74,8 @@ enum LeadsTable {
                     let insert = table.insert(
                         email <- newEmail,
                         importName <- newImportName,
-                        domain <- newDomain
+                        domain <- newDomain,
+                        isActive <- true
                     )
                     try db.run(insert)
                 }
@@ -135,7 +138,7 @@ enum DomainsTable {
         return result
     }
 
-    static func saveDomain(newName: String, newAbbreviation: String, newExportType: Int) {
+    static func addDomain(newName: String, newAbbreviation: String, newExportType: Int) {
         do {
             let insert = table.insert(
                 name <- newName,
@@ -154,16 +157,13 @@ enum DomainsTable {
 }
 
 public struct Domain {
-    static let defaultUrl: URL = FileManager.default
-        .urls(for: .downloadsDirectory, in: .userDomainMask).first!
-
     let id: Int64
     var name: String
     var abbreviation: String
     var exportType: Int
     var importNames: [String]
-    var saveFolder: URL
-
+    var saveFolder: URL?
+    var deleted: Bool = false
     var strExportType: String {
         switch exportType {
         case 0: "Regular"
@@ -189,39 +189,42 @@ public struct Domain {
             importNames: row[DomainsTable.importNames]
                 .split(separator: ",")
                 .map(String.init),
-            saveFolder: folderURL ?? defaultUrl
+            saveFolder: folderURL
         )
     }
 
-    static func blob2Url(_ data: Data) -> URL {
+    static func blob2Url(_ data: Data) -> URL? {
         do {
             var isStale = false
             let url = try URL(resolvingBookmarkData: data,
                               options: .withSecurityScope,
                               relativeTo: nil,
                               bookmarkDataIsStale: &isStale)
-            
+
             if url.startAccessingSecurityScopedResource() {
-                        return url   // ✅ Now accessible
-                    } else {
-                        print("❌ Failed to access bookmark security scope.")
-                        return url
-                    }
-            
-            
+                return url
+            } else {
+                print("❌ Failed to access bookmark security scope.")
+                return nil
+            }
+
         } catch {
             print("Error creating url : \(error)")
-            return defaultUrl
+            return nil
         }
     }
 
-    static func url2Blob(_ url: URL) -> Blob? {
+    static func url2Blob(_ url: URL?) -> Blob? {
         do {
-            let data = try url.bookmarkData(options: .withSecurityScope,
-                                            includingResourceValuesForKeys: nil,
-                                            relativeTo: nil)
-
-            return Blob(bytes: [UInt8](data))
+            if let data = try url?.bookmarkData(options: .withSecurityScope,
+                                                includingResourceValuesForKeys: nil,
+                                                relativeTo: nil)
+            {
+                return Blob(bytes: [UInt8](data))
+            } else {
+                print("No Url")
+                return nil
+            }
 
         } catch {
             print("Error creating url : \(error)")
@@ -235,13 +238,12 @@ public struct Domain {
             let domainRow = DomainsTable.table.filter(
                 DomainsTable.id == id
             )
-
             try db?.run(domainRow.update(
                 DomainsTable.name <- name,
                 DomainsTable.abbreviation <- abbreviation,
                 DomainsTable.exportType <- exportType,
                 DomainsTable.importNames <- importNames.joined(separator: ","),
-                DomainsTable.saveFolder <- Domain.url2Blob(saveFolder)!
+                DomainsTable.saveFolder <- Domain.url2Blob(saveFolder)
             ))
 
             print("Domain updated: \(name)")
@@ -263,54 +265,84 @@ public struct Domain {
         }
     }
 
-    func leadsCount(in importName: String? = nil) -> Int {
+    func leadsCount(in importName: String? = nil, isActive: Bool? = nil) -> Int {
         guard let db = DatabaseManager.shared.db else { return 0 }
 
-        if importName != nil {
-            do {
-                let query = LeadsTable.table.filter(
-                    (LeadsTable.domain == id) && (LeadsTable.importName == importName!)
-                )
+        var filterExpr = LeadsTable.domain == id
 
-                let count = try db.scalar(query.count)
-                return count
-            } catch {
-                print("Failed to count leads: \(error)")
-                return 0
-            }
+        if let importName = importName {
+            filterExpr = filterExpr && (LeadsTable.importName == importName)
+        }
 
-        } else {
-            do {
-                let query = LeadsTable.table.filter(LeadsTable.domain == id)
-                let count = try db.scalar(query.count)
-                return count
-            } catch {
-                print("Failed to count leads: \(error)")
-                return 0
+        if let isActive = isActive {
+            filterExpr = filterExpr && (LeadsTable.isActive == isActive)
+        }
+
+        do {
+            let query = LeadsTable.table.filter(filterExpr)
+            let count = try db.scalar(query.count)
+            return count
+        } catch {
+            print("Failed to count leads: \(error)")
+            return 0
+        }
+    }
+
+    func importNamesForDomain() -> [String] {
+        guard let db = DatabaseManager.shared.db else { return [] }
+
+        do {
+            let query = LeadsTable.table
+                .select(LeadsTable.importName)
+                .filter(LeadsTable.domain == id)
+                .group(LeadsTable.importName)
+
+            var names: [String] = []
+            for row in try db.prepare(query) {
+                let name = row[LeadsTable.importName] // ✅ Direct access
+                names.append(name)
             }
+            return names
+        } catch {
+            print("Failed to get import names: \(error)")
+            return []
         }
     }
 
     func getLeadsFromRequest(requestData: [String: String]) -> String {
         guard let db = DatabaseManager.shared.db else { return "" }
         var result: [String] = []
+        var deactivateIDs: [Int64] = []
 
-        for (exportImportName, amount) in requestData {
-            let total = leadsCount(in: exportImportName)
-            let offset = Int.random(in: 0 ..< total)
+        do {
+            try db.transaction {
+                for (exportImportName, amountStr) in requestData {
+                    guard let amount = Int(amountStr) else { continue }
+                    let total = leadsCount(in: exportImportName)
+                    let offset = total > amount ? Int.random(in: 0 ..< (total - amount)) : 0
+                    let query = LeadsTable.table
+                        .filter(
+                            (LeadsTable.domain == id) &&
+                                (LeadsTable.importName == exportImportName) &&
+                                (LeadsTable.isActive == true)
+                        )
+                        .limit(amount, offset: offset)
 
-            let query = LeadsTable.table.filter(
-                (LeadsTable.domain == id) && (LeadsTable.importName == exportImportName)
-            )
-            .limit(Int(amount)!, offset: offset)
-
-            do {
-                for row in try db.prepare(query) {
-                    result.append(row[LeadsTable.email])
+                    for row in try db.prepare(query) {
+                        result.append(row[LeadsTable.email])
+                        deactivateIDs.append(row[LeadsTable.id])
+                    }
                 }
-            } catch {
-                print("Failed to fetch leads for \(exportImportName): \(error)")
+
+                // BULK DELETE
+                if !deactivateIDs.isEmpty {
+                    let deactivateQuery = LeadsTable.table.filter(deactivateIDs.contains(LeadsTable.id))
+                    try db.run(deactivateQuery.update(LeadsTable.isActive <- false))
+                    print("🧹 Deactivated \(deactivateIDs.count) leads")
+                }
             }
+        } catch {
+            print("❌ Transaction Failed: \(error)")
         }
 
         return result.joined(separator: "\n")

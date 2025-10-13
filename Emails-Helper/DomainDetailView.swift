@@ -13,6 +13,7 @@ enum Mode: String {
     case view
     case importLeads
     case exportLeads
+    case deleted
 }
 
 struct DomainDetailView: View {
@@ -34,10 +35,20 @@ struct DomainDetailView: View {
                 ImportLeadsView(mode: $mode, domain: $domain)
             case .exportLeads:
                 ExportLeadsView(mode: $mode, domain: $domain)
+                
+            case .deleted:
+                DeleteDomainView()
             }
+        
             
         }.padding()
             .navigationTitle(domain.name)
+    }
+}
+
+struct DeleteDomainView: View {
+    var body: some View {
+        Text("Deleted Domain")
     }
 }
 
@@ -56,7 +67,7 @@ struct ExportLeadsView: View {
                     Text("Import Name: \(importName)")
                         .font(.subheadline)
                         .foregroundColor(.gray)
-                    Text("\(domain.leadsCount(in: importName))")
+                    Text("\(domain.leadsCount(in: importName)) / \(domain.leadsCount(in: importName, isActive: true))")
                     Spacer()
                     TextField("Amount", text: Binding(
                         get: { requestData[importName] ?? "" },
@@ -78,17 +89,21 @@ struct ExportLeadsView: View {
     }
     
     private func exportLeads() {
-        
-        let leads = domain.getLeadsFromRequest(requestData:  requestData)
-        print(leads)
+        let leads = domain.getLeadsFromRequest(requestData: requestData)
         saveFile(content: leads, fileName: fileName)
         mode = .view
     }
 
     private func saveFile(content: String, fileName: String) {
         let saveFolder = domain.saveFolder
-        let fileURL = saveFolder.appendingPathComponent("\(fileName).csv")
         
+        guard let folder = saveFolder else {
+            print("Choose a save folder first")
+            return
+        }
+
+        let fileURL = folder.appendingPathComponent("\(fileName).csv")
+
         do {
             try content.write(to: fileURL, atomically: true, encoding: .utf8)
             print("File saved at: \(fileURL.path)")
@@ -96,8 +111,6 @@ struct ExportLeadsView: View {
             print("Failed to save file: \(error)")
         }
     }
-    
-    
 }
 
 struct InfoDomainView: View {
@@ -109,8 +122,13 @@ struct InfoDomainView: View {
         Text("ID: \(domain.id)")
         Text("Abbreviation: \(domain.abbreviation)")
         Text("Export Type: \(domain.strExportType)")
-        Text("Save Folder: \(domain.saveFolder)")
-        Text("Contact Count: \(domain.leadsCount())")
+        Text(domain.saveFolder != nil ?
+            "Save Folder: \(domain.saveFolder!.path)" :
+            "Save Folder: Not Set")
+        Text(
+            "Contact Count: \(domain.leadsCount()) / \(domain.leadsCount(isActive: true))"
+        )
+        Text("import Names : \(domain.importNamesForDomain())")
         List {
             ForEach(domain.importNames, id: \.self) { importName in
                 HStack {
@@ -119,7 +137,7 @@ struct InfoDomainView: View {
                         .foregroundColor(.gray)
                     
                     Spacer()
-                    Text("\(domain.leadsCount(in: importName))")
+                    Text("\(domain.leadsCount(in: importName)) / \(domain.leadsCount(in: importName, isActive: true))")
                 }
             }
         }
@@ -158,7 +176,10 @@ struct EditDomainView: View {
             Text("Blueshift").tag(2)
         }
         .pickerStyle(.segmented)
-        Text("Save Folder: \(domain.saveFolder)")
+        Text(domain.saveFolder != nil ?
+            "Save Folder: \(domain.saveFolder!.path)" :
+            "Save Folder: Not Set")
+
         Button("Change Directory") {
             if let url = pickFolder(startingAt: domain.saveFolder) {
                 domain.saveFolder = url
@@ -178,8 +199,12 @@ struct EditDomainView: View {
             
             Button("Delete Domain") {
                 domain.delete()
+                domain.deleted = true
+                
                 originalDomain.delete()
-                mode = .view
+                originalDomain.deleted = true
+                
+                mode = .deleted
             }
         }
     }
@@ -201,7 +226,6 @@ struct EditDomainView: View {
         }
         return nil
     }
-
 }
 
 struct ImportLeadsView: View {
@@ -211,6 +235,7 @@ struct ImportLeadsView: View {
     @Binding var mode: Mode
     @Binding var domain: Domain
     
+    
     var body: some View {
         TextField("Import Name", text: $importName)
         SelectFilesView(emailsFromFiles: $emailsFromFiles)
@@ -219,6 +244,10 @@ struct ImportLeadsView: View {
             importContacts()
             let timeElapsed = Date().timeIntervalSince(start)
             print("Import took \(timeElapsed) seconds.")
+        }
+        
+        Button("Cancel"){
+            mode = .view
         }
     }
     
@@ -232,6 +261,7 @@ struct ImportLeadsView: View {
             )
         
         domain.importNames.append(importName)
+        domain.importNames = Array(Set(domain.importNames)).sorted()
         domain.update()
         mode = .view
     }

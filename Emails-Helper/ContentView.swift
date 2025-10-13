@@ -13,7 +13,7 @@ struct ContentView: View {
     var body: some View {
         NavigationView {
             VStack {
-                List(domains, id: \.id) { domain in
+                List(domains.filter { !$0.deleted }, id: \.id) { domain in
                     HStack {
                         NavigationLink(destination: DomainDetailView(
                             domain: $domains[domains.firstIndex(where: { $0.id == domain.id })!]))
@@ -30,7 +30,7 @@ struct ContentView: View {
                     formatter.dateFormat = "yyyy-MM-dd:HH:mm:ss"
                     let nowString = formatter.string(from: Date())
 
-                    DomainsTable.saveDomain(
+                    DomainsTable.addDomain(
                         newName: nowString,
                         newAbbreviation: "ABC",
                         newExportType: 0
