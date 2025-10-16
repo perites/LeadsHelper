@@ -21,28 +21,37 @@ struct DomainDetailView: View {
     @State private var mode: Mode = .view
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            switch mode {
-            case .view:
-                InfoDomainView(mode: $mode, domain: $domain)
-            case .edit:
-                EditDomainView(
-                    mode: $mode,
-                    originalDomain: $domain,
-                    domain: domain
-                )
-            case .importLeads:
-                ImportLeadsView(mode: $mode, domain: $domain)
-            case .exportLeads:
-                ExportLeadsView(mode: $mode, domain: $domain)
-                
-            case .deleted:
-                DeleteDomainView()
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 20) {
+                switch mode {
+                case .view:
+                    DomainInfoView(mode: $mode, domain: $domain)
+                case .edit:
+                    EditDomainView(
+                        mode: $mode,
+                        originalDomain: $domain,
+                        domain: domain
+                    )
+                case .importLeads:
+                    ImportLeadsView(mode: $mode, domain: $domain)
+                case .exportLeads:
+                    
+                    
+                   
+                    
+                    
+                    DomainExportView(mode: $mode, domain: $domain)
+                    
+
+                    
+                    
+                case .deleted:
+                    DeleteDomainView()
+                }
             }
-        
-            
-        }.padding()
-            .navigationTitle(domain.name)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding()
+        }
     }
 }
 
@@ -52,110 +61,12 @@ struct DeleteDomainView: View {
     }
 }
 
-struct ExportLeadsView: View {
-    @Binding var mode: Mode
-    @Binding var domain: Domain
-    
-    @State var fileName: String = ""
-    @State var requestData: [String: String] = [:] // ✅ Per-importName tracking
 
-    var body: some View {
-        TextField("File Name", text: $fileName)
-        List {
-            ForEach(domain.importNames, id: \.self) { importName in
-                HStack {
-                    Text("Import Name: \(importName)")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                    Text("\(domain.leadsCount(in: importName)) / \(domain.leadsCount(in: importName, isActive: true))")
-                    Spacer()
-                    TextField("Amount", text: Binding(
-                        get: { requestData[importName] ?? "" },
-                        set: { requestData[importName] = $0 }
-                    ))
-                    .frame(width: 60)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                }
-            }
-        }
-        
-        Button("Export") {
-            exportLeads()
-        }
-        
-        Button("Cancel") {
-            mode = .view
-        }
-    }
-    
-    private func exportLeads() {
-        let leads = domain.getLeadsFromRequest(requestData: requestData)
-        saveFile(content: leads, fileName: fileName)
-        mode = .view
-    }
 
-    private func saveFile(content: String, fileName: String) {
-        let saveFolder = domain.saveFolder
-        
-        guard let folder = saveFolder else {
-            print("Choose a save folder first")
-            return
-        }
 
-        let fileURL = folder.appendingPathComponent("\(fileName).csv")
 
-        do {
-            try content.write(to: fileURL, atomically: true, encoding: .utf8)
-            print("File saved at: \(fileURL.path)")
-        } catch {
-            print("Failed to save file: \(error)")
-        }
-    }
-}
 
-struct InfoDomainView: View {
-    @Binding var mode: Mode
-    @Binding var domain: Domain
-    
-    var body: some View {
-        Text("Name: \(domain.name)")
-        Text("ID: \(domain.id)")
-        Text("Abbreviation: \(domain.abbreviation)")
-        Text("Export Type: \(domain.strExportType)")
-        Text(domain.saveFolder != nil ?
-            "Save Folder: \(domain.saveFolder!.path)" :
-            "Save Folder: Not Set")
-        Text(
-            "Contact Count: \(domain.leadsCount()) / \(domain.leadsCount(isActive: true))"
-        )
-        Text("import Names : \(domain.importNamesForDomain())")
-        List {
-            ForEach(domain.importNames, id: \.self) { importName in
-                HStack {
-                    Text("Import Name: \(importName)")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                    
-                    Spacer()
-                    Text("\(domain.leadsCount(in: importName)) / \(domain.leadsCount(in: importName, isActive: true))")
-                }
-            }
-        }
-        
-        Button("Edit") {
-            mode = .edit
-        }
-        .padding(.top, 10)
-        
-        Button("Import Leads") {
-            mode = .importLeads
-        }
-        
-        Button("Export Leads") {
-            mode = .exportLeads
-        }
-    }
-}
+
 
 struct EditDomainView: View {
     @Binding var mode: Mode
@@ -235,7 +146,6 @@ struct ImportLeadsView: View {
     @Binding var mode: Mode
     @Binding var domain: Domain
     
-    
     var body: some View {
         TextField("Import Name", text: $importName)
         SelectFilesView(emailsFromFiles: $emailsFromFiles)
@@ -246,7 +156,7 @@ struct ImportLeadsView: View {
             print("Import took \(timeElapsed) seconds.")
         }
         
-        Button("Cancel"){
+        Button("Cancel") {
             mode = .view
         }
     }

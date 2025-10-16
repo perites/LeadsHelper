@@ -138,12 +138,12 @@ enum DomainsTable {
         return result
     }
 
-    static func addDomain(newName: String, newAbbreviation: String, newExportType: Int) {
+    static func addDomain(newName: String) {
         do {
             let insert = table.insert(
                 name <- newName,
-                abbreviation <- newAbbreviation,
-                exportType <- newExportType,
+                abbreviation <- "ABC",
+                exportType <- 0,
                 importNames <- ""
             )
             if let rowId = try DatabaseManager.shared.db?.run(insert) {
@@ -156,12 +156,13 @@ enum DomainsTable {
     }
 }
 
-public struct Domain {
-    let id: Int64
+public struct Domain: Hashable, Identifiable{
+    public let id: Int64
     var name: String
     var abbreviation: String
     var exportType: Int
     var importNames: [String]
+    var maxLeads : Int = 50_000
     var saveFolder: URL?
     var deleted: Bool = false
     var strExportType: String {
@@ -318,7 +319,7 @@ public struct Domain {
             try db.transaction {
                 for (exportImportName, amountStr) in requestData {
                     guard let amount = Int(amountStr) else { continue }
-                    let total = leadsCount(in: exportImportName)
+                    let total = leadsCount(in: exportImportName, isActive: true)
                     let offset = total > amount ? Int.random(in: 0 ..< (total - amount)) : 0
                     let query = LeadsTable.table
                         .filter(
