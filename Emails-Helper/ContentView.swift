@@ -24,7 +24,10 @@ struct ContentView: View {
         NavigationSplitView {
             List(selection: $selectedDomain) {
                 ForEach(filteredDomains) { domain in
-                    Text(domain.name).tag(domain)
+                    Text(domain.name)
+                        .font(.title3)
+//                        .padding(.vertical,3)
+                        .tag(domain)
                 }
             }
             .listStyle(.sidebar)

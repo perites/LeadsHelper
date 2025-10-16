@@ -21,37 +21,31 @@ struct DomainDetailView: View {
     @State private var mode: Mode = .view
     
     var body: some View {
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 20) {
-                switch mode {
-                case .view:
-                    DomainInfoView(mode: $mode, domain: $domain)
-                case .edit:
-                    EditDomainView(
-                        mode: $mode,
-                        originalDomain: $domain,
-                        domain: domain
-                    )
-                case .importLeads:
-                    ImportLeadsView(mode: $mode, domain: $domain)
-                case .exportLeads:
-                    
-                    
-                   
-                    
-                    
-                    DomainExportView(mode: $mode, domain: $domain)
-                    
-
-                    
-                    
-                case .deleted:
-                    DeleteDomainView()
-                }
+        VStack(alignment: .leading, spacing: 20) {
+            switch mode {
+            case .view:
+                DomainInfoView(mode: $mode, domain: $domain)
+            case .edit:
+                EditDomainView(
+                    mode: $mode,
+                    originalDomain: $domain,
+                    domain: domain
+                )
+            case .importLeads:
+                ImportLeadsView(mode: $mode, domain: $domain)
+            case .exportLeads:
+                DomainExportView(mode: $mode, domain: $domain)
+            case .deleted:
+                DeleteDomainView()
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .padding()
         }
+        .padding()
+        .navigationTitle(domain.abbreviation)
+        .toolbar {
+            Button(action: { mode = .edit }) {
+                Image(systemName: "gearshape")
+            }
+        }.frame(minWidth: 550, idealWidth: 550)
     }
 }
 
@@ -60,13 +54,6 @@ struct DeleteDomainView: View {
         Text("Deleted Domain")
     }
 }
-
-
-
-
-
-
-
 
 struct EditDomainView: View {
     @Binding var mode: Mode
