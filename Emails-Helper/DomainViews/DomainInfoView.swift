@@ -24,12 +24,14 @@ struct DomainInfoView: View {
     private var DomainHeader: some View {
         HStack {
             Text(domain.name)
+                .font(.title)
+                .fontWeight(.semibold)
             Spacer()
             
             Button(action: {
                 mode = .exportLeads
             }) {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     Image(systemName: "arrow.down.document")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -48,8 +50,7 @@ struct DomainInfoView: View {
             
             
         }
-        .font(.title)
-        .fontWeight(.semibold)
+        
     }
 
     private var LeadsUsageBars: some View {

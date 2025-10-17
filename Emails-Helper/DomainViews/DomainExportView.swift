@@ -16,18 +16,8 @@ struct DomainExportView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            
-            
-            
-            
-            // File Name
             VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("File Name:")
-                        .font(.headline)
-                    TextField("Enter file name", text: $fileName)
-                        .font(.headline)
-                }
+                FileNameInputView(fileName: $fileName)
                 if let folder = domain.saveFolder {
                     Text("Save Folder: \(folder.path)")
                         .font(.caption)
@@ -41,117 +31,95 @@ struct DomainExportView: View {
 
             Divider()
 
-            // Import Rows
-            Text("Import Names")
-                .font(.headline)
-
             ScrollView {
                 VStack(spacing: 12) {
                     ForEach(domain.importNames, id: \.self) { importName in
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(importName)
-                                    .font(.headline)
-                                    .bold()
-                                    .padding(.vertical, 5)
-                                Text("Available Leads: \(domain.leadsCount(in: importName, isActive: true))")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.gray)
-                            }
-                            Spacer()
-                            TextField("Amount", text: Binding(
-                                get: { requestData[importName] ?? "" },
-                                set: { newValue in
-                                    requestData[importName] = newValue.filter { $0.isNumber }
-                                }
-                            ))
-                            .font(.system(size: 14))
-                            .frame(width: 60)
-                            .padding(6)
-                            .background(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.5)))
-                            .multilineTextAlignment(.center)
-                        }
-                        .padding(8)
-                        .background(Color.gray.opacity(0.1))
-                        .cornerRadius(8)
+                        ImportNameInputView(
+                            importName: importName,
+                            availableLeadsCount: domain.leadsCount(in: importName, isActive: true),
+                            requestData: $requestData
+                        )
                     }
                 }
-                Divider()
-                HStack {
-                    Text("Total:")
-                        .font(.headline)
-                    Spacer()
-                    Text("\(requestData.values.compactMap { Int($0) }.reduce(0, +))")
-                        .font(.headline)
-                }.padding(.horizontal, 5)
             }
+            Divider()
 
-            // Action Buttons
             HStack {
-                
-                HStack {
-                        Button(action: {
-                            mode = .view
-                        }) {
-                            Image(systemName: "chevron.left")
-//                                .resizable()
-//                                .frame(width: 12, height: 15)
-                                .foregroundColor(.secondary)
-                                .padding(.vertical,5)
-                            Text("Back")
-                                .foregroundColor(.secondary)
-                                .font(.system(size: 14, weight: .semibold))
-                        }
-                        
-                    }
+                Text("Total:")
                 Spacer()
-                
-                ActionButton(
-                    title: "Finish Export",
-                    systemImage: "folder.circle",
-                    color: .secondary
-                ) {
-                    exportLeads()
-                }
+                Text("\(requestData.values.compactMap { Int($0) }.reduce(0, +))")
+            }
+            .padding(.horizontal, 5)
+            .font(.title3)
+
+            HStack {
+                GoBackButtonView(mode: $mode)
                 Spacer()
-                Spacer()
+                ExportButton
             }
             .padding(.top, 10)
         }
         .padding()
     }
-    
-    private struct ActionButton: View {
-        let title: String
-        let systemImage: String
-        let color: Color
-        let action: () -> Void
-        
+
+    private struct ImportNameInputView: View {
+        let importName: String
+        let availableLeadsCount: Int
+
+        @Binding var requestData: [String: String]
+
         var body: some View {
-            Button(action: action) {
-                HStack(spacing: 8) {
-                    Image(systemName: systemImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 30, height: 30)
-                        .foregroundColor(.white)
-                    
-                    Text(title)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
+            HStack {
+                VStack(alignment: .leading) {
+                    Text(importName)
+                        .font(.body)
+                        .bold()
+                        .padding(.vertical, 5)
+                    Text("Available Leads: \(availableLeadsCount)")
+                        .font(.callout)
+                        .foregroundColor(.gray)
                 }
-                .padding(.vertical, 8)
-                .padding(.horizontal, 12)
-                .background(color)
-                .cornerRadius(8)
-                .shadow(radius: 2)
-                .frame(width: 400)
+                Spacer()
+                TextField("Amount", text: Binding(
+                    get: { requestData[importName] ?? "" },
+                    set: { newValue in
+                        requestData[importName] = newValue.filter { $0.isNumber }
+                    }
+                ))
+                .font(.body)
+                .frame(width: 60)
+                .padding(6)
+                .background(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.5)))
+                .multilineTextAlignment(.center)
             }
-            .buttonStyle(PlainButtonStyle())
+            .padding(8)
+            .background(Color.gray.opacity(0.1))
+            .cornerRadius(8)
         }
     }
-    
-    
+
+    private var ExportButton: some View {
+        Button(action: {
+            exportLeads()
+        }) {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.down.document")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 25, height: 25)
+                Text("Finish Export")
+                    .font(.title2)
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 6)
+            .background(.blue.opacity(0.3))
+            .foregroundColor(.white)
+            .cornerRadius(8)
+            .shadow(radius: 2)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
     private func exportLeads() {
         print(requestData)
         let leads = domain.getLeadsFromRequest(requestData: requestData)
@@ -170,6 +138,36 @@ struct DomainExportView: View {
             print("File saved at: \(fileURL.path)")
         } catch {
             print("Failed to save file: \(error)")
+        }
+    }
+}
+
+struct FileNameInputView: View {
+    @Binding var fileName: String
+
+    var body: some View {
+        HStack {
+            Text("File Name:")
+                .font(.title3)
+            TextField("Enter file name", text: $fileName)
+                .font(.title3)
+        }
+    }
+}
+
+struct GoBackButtonView: View {
+    @Binding var mode: Mode
+
+    var body: some View {
+        Button(action: {
+            mode = .view
+        }) {
+            HStack (spacing: 3) {
+                Image(systemName: "chevron.left")
+                    .padding(.vertical, 5)
+                Text("Back")
+                    .font(.callout)
+            }.foregroundColor(.secondary)
         }
     }
 }
