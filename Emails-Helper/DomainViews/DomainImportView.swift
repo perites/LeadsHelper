@@ -24,7 +24,7 @@ struct DomainImportView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 10) {
             ImportNameInputView
             
             Divider()
@@ -33,10 +33,6 @@ struct DomainImportView: View {
                 FilesImportView(emailsFromFiles: $emailsFromFiles)
                 TextImportView(emailsFromText: $emailsFromText)
             }
-            
-//            FilesImportView(emailsFromFiles: $emailsFromFiles)
-//            TextImportView(emailsFromText: $emailsFromText)
-//
             
             Divider()
             HStack {
@@ -58,6 +54,7 @@ struct DomainImportView: View {
                 .font(.title3)
             TextField("Enter import name", text: $importName)
                 .font(.title3)
+                .textFieldStyle(PlainTextFieldStyle())
         }
     }
     
@@ -87,7 +84,11 @@ struct DomainImportView: View {
     }
 
     private func importLeads() {
-        guard let emails = emailsAll else { return print("Wait for leads to load...") }
+        guard let emails = emailsAll else {
+            ToastManager.shared
+                .show(style: .error, message: "Leads exported successfully")
+            return
+        }
         LeadsTable
             .addLeadsBulk(
                 newEmails: emails,
@@ -125,7 +126,9 @@ private struct FilesImportView: View {
     
     @State var selectedFiles: [URL] = []
     @State private var isFileImporterPresented = false
-        
+    
+    @State private var parseTask: Task<Void, Never>? = nil
+
     var body: some View {
         VStack {
             HStack {
@@ -142,28 +145,22 @@ private struct FilesImportView: View {
             .padding()
             .font(.body)
                 
-        }.task(id: selectedFiles) {
+        }.onChange(of: selectedFiles, initial: true) { _, newSelectedFiles in
+            parseTask?.cancel()
+            
             emailsFromFiles = nil
-            let emails: [String] = await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .background).async {
-                    var csvData = ""
-                    for url in selectedFiles {
-                        guard url.startAccessingSecurityScopedResource() else {
-                            print("Cannot access file: \(url)")
-                            continue
-                        }
-                        defer { url.stopAccessingSecurityScopedResource() } // runs after scope ends
-
-                        if let data = try? String(contentsOf: url, encoding: .utf8) {
-                            csvData += data
-                        }
-                    }
-                    let result = getEmailsFromString(csvData)
-                    continuation.resume(returning: result)
+            parseTask = Task.detached { [newSelectedFiles] in
+                var combined = ""
+                for url in newSelectedFiles {
+                    guard url.startAccessingSecurityScopedResource() else { continue }
+                    defer { url.stopAccessingSecurityScopedResource() }
+                    combined += (try? String(contentsOf: url, encoding: .utf8)) ?? ""
                 }
-            }
-            await MainActor.run {
-                emailsFromFiles = emails
+                let emails = getEmailsFromString(combined)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    emailsFromFiles = emails
+                }
             }
         }
         .padding(10)
@@ -195,8 +192,6 @@ private struct FilesImportView: View {
             }
             .padding(.vertical, 2)
             .padding(.horizontal, 4)
-//            .background(.blue.opacity(0.3))
-//            .foregroundColor(.white)
             .cornerRadius(8)
             .shadow(radius: 2)
         }.fileImporter(isPresented: $isFileImporterPresented, allowedContentTypes: [.commaSeparatedText], allowsMultipleSelection: true) { result in
@@ -256,8 +251,10 @@ private struct FilesImportView: View {
 private struct TextImportView: View {
     @Binding var emailsFromText: [String]?
     
-    @State var textImportText: String = ""
+    @State var textInput: String = ""
     
+    @State private var parseTask: Task<Void, Never>? = nil
+
     var body: some View {
         VStack {
             HStack {
@@ -268,7 +265,7 @@ private struct TextImportView: View {
             .font(.title3)
             .fontWeight(.semibold)
             
-            TextEditor(text: $textImportText)
+            TextEditor(text: $textInput)
                 .font(.body)
                 .padding()
                 .frame(minHeight: 150) // Adjust height like a textarea
@@ -281,16 +278,19 @@ private struct TextImportView: View {
             .padding()
             .font(.body)
             
-        }.task(id: textImportText) {
+        }.onChange(of: textInput, initial: true) { _, newText in
+            parseTask?.cancel() // cancel previous parsing
             emailsFromText = nil
-            let emails: [String] = await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .background).async {
-                    let result = getEmailsFromString(textImportText)
-                    continuation.resume(returning: result)
+            
+            parseTask = Task.detached { [newText] in
+                // Heavy parsing
+                let emails = getEmailsFromString(newText)
+                
+                // Only update if not cancelled
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    emailsFromText = emails
                 }
-            }
-            await MainActor.run {
-                emailsFromText = emails
             }
         }
         .padding(10)

@@ -46,6 +46,53 @@ struct ContentView: View {
                     Image(systemName: "plus.circle")
                 }
             }
+            
+            Button {
+//                    toast = Toast(style: .info, message: "Btw, you are a good person.")
+                ToastManager.shared.show(style: .success, message:
+                                            "Leadsexportedsuccessfullysuccessfullysuccessfullysuccessfullysuccessfullysuccessfullysuccessfullysuccessfullysuccessfullysuccessfullysuccessfully ✅", duration: 5)
+
+                  } label: {
+                    Text("Run (Info)")
+                  }
+            
+            Button {
+//                    toast = Toast(style: .info, message: "Btw, you are a good person.")
+                ToastManager.shared
+                    .show(
+                        style: .error,
+                        message: "Leads exported successfully ✅"
+                    )
+
+                  } label: {
+                    Text("Run (error)")
+                  }
+            
+            
+            Button {
+//                    toast = Toast(style: .info, message: "Btw, you are a good person.")
+                ToastManager.shared
+                    .show(
+                        style: .info,
+                        message: "Leads exported successfully ✅"
+                    )
+
+                  } label: {
+                    Text("Run (info)")
+                  }
+            
+            Button {
+//                    toast = Toast(style: .info, message: "Btw, you are a good person.")
+                ToastManager.shared
+                    .show(
+                        style: .warning,
+                        message: "Leads exported successfully ✅"
+                    )
+
+                  } label: {
+                    Text("Run (warming)")
+                  }
+            
 
         } detail: {
             if let domain = selectedDomain, let domainBinding = binding(for: domain) {

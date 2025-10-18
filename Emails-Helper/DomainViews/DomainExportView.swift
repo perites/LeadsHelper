@@ -91,6 +91,7 @@ struct DomainExportView: View {
                 .padding(6)
                 .background(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.5)))
                 .multilineTextAlignment(.center)
+                .textFieldStyle(PlainTextFieldStyle())
             }
             .padding(8)
             .background(Color.gray.opacity(0.1))
@@ -154,6 +155,7 @@ struct FileNameInputView: View {
                 .font(.title3)
             TextField("Enter file name", text: $fileName)
                 .font(.title3)
+                .textFieldStyle(PlainTextFieldStyle())
         }
     }
 }

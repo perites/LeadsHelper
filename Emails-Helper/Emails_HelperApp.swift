@@ -9,11 +9,11 @@ import SwiftUI
 
 @main
 struct Emails_HelperApp: App {
-    
-    
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ToastContainerView {
+                ContentView()
+            }
         }
     }
 }

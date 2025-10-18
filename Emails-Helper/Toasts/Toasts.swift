@@ -5,3 +5,157 @@
 //  Created by Mykyta Krementar on 18/10/2025.
 //
 
+import Combine
+import SwiftUI
+
+// MARK: - Toast Model
+
+struct Toast: Equatable, Identifiable {
+    let id = UUID()
+    var style: ToastStyle
+    var message: String
+    var duration: Double
+    var width: CGFloat = 300
+}
+
+enum ToastStyle {
+    case error, warning, success, info
+
+    var themeColor: Color {
+        switch self {
+        case .error: return .red
+        case .warning: return .orange
+        case .info: return .blue
+        case .success: return .green
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .info: return "info.circle.fill"
+        case .warning: return "exclamationmark.triangle.fill"
+        case .success: return "checkmark.circle.fill"
+        case .error: return "xmark.circle.fill"
+        }
+    }
+}
+
+// MARK: - Toast Manager (Queue)
+
+class ToastManager: ObservableObject {
+    static let shared = ToastManager()
+
+    @Published private(set) var toasts: [Toast] = []
+
+    private init() {}
+
+    func show(style: ToastStyle, message: String, duration: Double = 6) {
+        let toast = Toast(style: style, message: message, duration: duration)
+        toasts.append(toast)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+            self.dismiss(toast)
+        }
+    }
+
+    func dismiss(_ toast: Toast) {
+        withAnimation {
+            self.toasts.removeAll { $0.id == toast.id }
+        }
+    }
+
+    func dismissAll() {
+        withAnimation {
+            self.toasts.removeAll()
+        }
+    }
+}
+
+// MARK: - Toast View
+
+struct ToastView: View {
+    var toast: Toast
+    var onDismiss: () -> Void
+
+    @State private var dragOffset: CGSize = .zero
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: toast.style.iconName)
+                .foregroundColor(toast.style.themeColor)
+            Text(toast.message)
+                .foregroundColor(.primary)
+                .lineLimit(3)
+            Spacer()
+//            Button(action: onDismiss) {
+//                Image(systemName: "xmark.circle.fill")
+//                    .foregroundColor(.primary)
+//            }
+//            .buttonStyle(.borderless)
+        }
+        .padding(12)
+        .frame(width: toast.width)
+        .background(.ultraThinMaterial)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(toast.style.themeColor, lineWidth: 2)
+        )
+        .cornerRadius(10)
+        .shadow(radius: 5)
+        .offset(dragOffset)
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    if value.translation.width > 0 {
+                        dragOffset = CGSize(width: value.translation.width, height: 0)
+                    }
+                }
+                .onEnded { value in
+                    // Dismiss if dragged far enough horizontally
+                    if abs(value.translation.width) > 100 {
+                        onDismiss()
+                    } else {
+                        withAnimation(.spring()) {
+                            dragOffset = .zero
+                        }
+                    }
+                }
+        )
+        .animation(.spring(), value: dragOffset)
+    }
+}
+
+// MARK: - Toast Container View with Slide Animations
+
+struct ToastContainerView<Content: View>: View {
+    @ObservedObject private var manager = ToastManager.shared
+    var content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        ZStack {
+            content
+            VStack(spacing: 10) {
+                ForEach(manager.toasts.reversed()) { toast in
+                    ToastView(toast: toast) {
+                        manager.dismiss(toast)
+                    }
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        )
+                    )
+                }
+                Spacer()
+            }
+            .padding(.top, 20)
+            .padding(.trailing, 20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .animation(.spring(response: 0.4, dampingFraction: 0.7), value: manager.toasts)
+        }
+    }
+}
