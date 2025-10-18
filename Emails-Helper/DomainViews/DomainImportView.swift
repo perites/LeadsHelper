@@ -28,7 +28,7 @@ struct DomainImportView: View {
             ImportNameInputView
             
             Divider()
-
+            
             HStack {
                 FilesImportView(emailsFromFiles: $emailsFromFiles)
                 TextImportView(emailsFromText: $emailsFromText)
@@ -51,11 +51,12 @@ struct DomainImportView: View {
     private var ImportNameInputView: some View {
         HStack {
             Text("Import Name:")
-                .font(.title3)
-            TextField("Enter import name", text: $importName)
-                .font(.title3)
-                .textFieldStyle(PlainTextFieldStyle())
-        }
+            SearchBarWithSuggestions(
+                query: $importName,
+                allItems: domain.importNames
+            ).textFieldStyle(PlainTextFieldStyle())
+            
+        }.font(.title3)
     }
     
     private var ImportButton: some View {
@@ -298,3 +299,48 @@ private struct TextImportView: View {
         .cornerRadius(8)
     }
 }
+
+struct SearchBarWithSuggestions: View {
+    @Binding var query: String
+    
+    @State private var suggestions: [String] = []
+    
+    let allItems: [String] // Full list to search from
+    
+    var body: some View {
+        TextField("Search...", text: $query)
+            .onChange(of: query) {
+                updateSuggestions()
+            }
+            .popover(isPresented: Binding(
+                get: { !query.isEmpty &&
+                    !allItems.contains(query) &&
+                    !suggestions.isEmpty
+                },
+                set: { _ in }
+            ), attachmentAnchor: .rect(.bounds), arrowEdge: .bottom) {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(suggestions.prefix(5), id: \.self) { item in
+                        Text(item)
+                            .font(.body)
+                            .onTapGesture {
+                                query = item
+                            }
+                    }
+                }
+                .frame(minWidth: 50)
+                .padding(10)
+                .background(Color(NSColor.windowBackgroundColor))
+            }
+    }
+    
+    func updateSuggestions() {
+        guard !query.isEmpty else {
+            suggestions = []
+            return
+        }
+        suggestions = allItems.filter { $0.lowercased().contains(query.lowercased()) }
+            .prefix(5).map { $0 }
+    }
+}
+   
