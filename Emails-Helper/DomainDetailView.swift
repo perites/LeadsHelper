@@ -45,7 +45,7 @@ struct DomainDetailView: View {
             Button(action: { mode = .edit }) {
                 Image(systemName: "gearshape")
             }
-        }.frame(minWidth: 550, idealWidth: 550)
+        }.frame(minWidth: 700, idealWidth: 700)
     }
 }
 

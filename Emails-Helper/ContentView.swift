@@ -48,8 +48,8 @@ struct ContentView: View {
             }
 
         } detail: {
-            if let domain = selectedDomain, !domain.deleted {
-                DomainDetailView(domain: binding(for: domain)).id(domain.id)
+            if let domain = selectedDomain, let domainBinding = binding(for: domain) {
+                DomainDetailView(domain:domainBinding ).id(domain.id)
             } else {
                 Text("Select a domain")
                     .foregroundStyle(.secondary)
@@ -59,9 +59,10 @@ struct ContentView: View {
         }
     }
 
-    private func binding(for domain: Domain) -> Binding<Domain> {
+    private func binding(for domain: Domain) -> Binding<Domain>? {
         guard let index = domains.firstIndex(where: { $0.id == domain.id }) else {
-            fatalError("Domain id: \(domain.id) not found in domains")
+            print("Domain id: \(domain.id) not found in domains")
+            return nil
         }
         return $domains[index]
     }

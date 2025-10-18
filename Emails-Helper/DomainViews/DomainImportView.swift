@@ -12,17 +12,39 @@ struct DomainImportView: View {
     @Binding var domain: Domain
     
     @State var importName: String = ""
-    @State var emailsFromFiles: [String]? = []
+    @State var emailsFromFiles: [String]? = nil
+    @State var emailsFromText: [String]? = nil
+    
+    var emailsAll: [String]? {
+        if emailsFromText != nil && emailsFromFiles != nil {
+            return Array(Set(emailsFromText! + emailsFromFiles!))
+        } else {
+            return nil
+        }
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            
             ImportNameInputView
-            Spacer()
-            SelectFilesView(emailsFromFiles: $emailsFromFiles)
-            Spacer()
+            
+            Divider()
+
+            HStack {
+                FilesImportView(emailsFromFiles: $emailsFromFiles)
+                TextImportView(emailsFromText: $emailsFromText)
+            }
+            
+//            FilesImportView(emailsFromFiles: $emailsFromFiles)
+//            TextImportView(emailsFromText: $emailsFromText)
+//
+            
+            Divider()
             HStack {
                 GoBackButtonView(mode: $mode)
+                Spacer()
+                Text(
+                    "Total Leads: \(emailsAll?.count.formatted(.number) ?? "Calculating...")"
+                )
                 Spacer()
                 ImportButton
             }
@@ -63,9 +85,9 @@ struct DomainImportView: View {
         }
         .buttonStyle(PlainButtonStyle())
     }
-    
+
     private func importLeads() {
-        let emails = emailsFromFiles!
+        guard let emails = emailsAll else { return print("Wait for leads to load...") }
         LeadsTable
             .addLeadsBulk(
                 newEmails: emails,
@@ -98,7 +120,7 @@ func getEmailsFromString(_ input: String) -> [String] {
     return emails
 }
 
-struct SelectFilesView: View {
+private struct FilesImportView: View {
     @Binding var emailsFromFiles: [String]?
     
     @State var selectedFiles: [URL] = []
@@ -107,10 +129,18 @@ struct SelectFilesView: View {
     var body: some View {
         VStack {
             HStack {
-                FilesPicker
-                SelectedFiles
+                Text("Files Import").font(.title3).fontWeight(.semibold)
+                Spacer()
+                SelectFilesButton
             }
-            Text("Contacts Amount from files: \(emailsFromFiles.map { String($0.count) } ?? "Loading...")")
+            
+            SelectedFiles
+            
+            Text(
+                "Leads from files: \(emailsFromFiles?.count.formatted(.number) ?? "Calculating...")"
+            )
+            .padding()
+            .font(.body)
                 
         }.task(id: selectedFiles) {
             emailsFromFiles = nil
@@ -136,8 +166,11 @@ struct SelectFilesView: View {
                 emailsFromFiles = emails
             }
         }
+        .padding(10)
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(8)
     }
-        
+    
     private func readCSV(from url: URL) -> String {
         do {
             let data = try String(contentsOf: url, encoding: .utf8)
@@ -148,12 +181,25 @@ struct SelectFilesView: View {
         }
     }
         
-    var FilesPicker: some View {
-        Button("Select Files") {
+    var SelectFilesButton: some View {
+        Button(action: {
             isFileImporterPresented.toggle()
-        }
-        .padding()
-        .fileImporter(isPresented: $isFileImporterPresented, allowedContentTypes: [.commaSeparatedText], allowsMultipleSelection: true) { result in
+        }) {
+            HStack(spacing: 4) {
+                Image(systemName: "folder.badge.person.crop")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 25, height: 25)
+                Text("Select Files")
+                    .font(.title3)
+            }
+            .padding(.vertical, 2)
+            .padding(.horizontal, 4)
+//            .background(.blue.opacity(0.3))
+//            .foregroundColor(.white)
+            .cornerRadius(8)
+            .shadow(radius: 2)
+        }.fileImporter(isPresented: $isFileImporterPresented, allowedContentTypes: [.commaSeparatedText], allowsMultipleSelection: true) { result in
             switch result {
             case .success(let urls):
                 selectedFiles = Array(Set(selectedFiles + urls))
@@ -164,23 +210,91 @@ struct SelectFilesView: View {
     }
         
     var SelectedFiles: some View {
-        List {
-            ForEach(selectedFiles, id: \.self) { file in
-                HStack {
-                    Text(file.lastPathComponent)
-                        .lineLimit(1)
-                    Spacer()
-                    Button(action: {
-                        if let index = selectedFiles.firstIndex(of: file) {
-                            selectedFiles.remove(at: index)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(selectedFiles, id: \.self) { file in
+                    HStack {
+                        Image(systemName: "doc.fill")
+                            .foregroundColor(.accentColor)
+                            .font(.title3)
+                        
+                        Text(file.lastPathComponent)
+                            .lineLimit(1)
+                            .font(.body)
+                            .foregroundColor(.primary)
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            if let index = selectedFiles.firstIndex(of: file) {
+                                selectedFiles.remove(at: index)
+                            }
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
                         }
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.red)
+                        .buttonStyle(.plain) // No ugly button highlight
                     }
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color(.windowBackgroundColor))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.gray.opacity(0.2))
+                    )
                 }
             }
+            .padding(5)
         }
-        .frame(height: CGFloat(selectedFiles.count * 40))
+//        .frame(height: 400)
+    }
+}
+
+private struct TextImportView: View {
+    @Binding var emailsFromText: [String]?
+    
+    @State var textImportText: String = ""
+    
+    var body: some View {
+        VStack {
+            HStack {
+                Text("Text Import")
+                Spacer()
+            }
+            .padding(.vertical, 5)
+            .font(.title3)
+            .fontWeight(.semibold)
+            
+            TextEditor(text: $textImportText)
+                .font(.body)
+                .padding()
+                .frame(minHeight: 150) // Adjust height like a textarea
+                .scrollContentBackground(.hidden)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.4)))
+            
+            Text(
+                "Leads from files: \(emailsFromText?.count.formatted(.number) ?? "Calculating...")"
+            )
+            .padding()
+            .font(.body)
+            
+        }.task(id: textImportText) {
+            emailsFromText = nil
+            let emails: [String] = await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .background).async {
+                    let result = getEmailsFromString(textImportText)
+                    continuation.resume(returning: result)
+                }
+            }
+            await MainActor.run {
+                emailsFromText = emails
+            }
+        }
+        .padding(10)
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(8)
     }
 }
