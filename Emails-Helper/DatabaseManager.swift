@@ -189,7 +189,8 @@ public struct Domain: Hashable, Identifiable{
             exportType: row[DomainsTable.exportType],
             importNames: row[DomainsTable.importNames]
                 .split(separator: ",")
-                .map(String.init),
+                .map(String.init)
+                .sorted(),
             saveFolder: folderURL
         )
     }
@@ -310,9 +311,9 @@ public struct Domain: Hashable, Identifiable{
         }
     }
 
-    func getLeadsFromRequest(requestData: [String: String]) -> String {
-        guard let db = DatabaseManager.shared.db else { return "" }
-        var result: [String] = []
+    func getLeadsFromRequest(requestData: [String: String]) -> [String: [String]] {
+        guard let db = DatabaseManager.shared.db else { return ["":[""]] }
+        var result: [String: [String]] = [:]
         var deactivateIDs: [Int64] = []
 
         do {
@@ -328,9 +329,10 @@ public struct Domain: Hashable, Identifiable{
                                 (LeadsTable.isActive == true)
                         )
                         .limit(amount, offset: offset)
-
+                    
+                    result[exportImportName] = []
                     for row in try db.prepare(query) {
-                        result.append(row[LeadsTable.email])
+                        result[exportImportName]!.append(row[LeadsTable.email])
                         deactivateIDs.append(row[LeadsTable.id])
                     }
                 }
@@ -346,6 +348,6 @@ public struct Domain: Hashable, Identifiable{
             print("❌ Transaction Failed: \(error)")
         }
 
-        return result.joined(separator: "\n")
+        return result
     }
 }

@@ -12,23 +12,17 @@ struct DomainExportView: View {
     @Binding var domain: Domain
 
     @State private var fileName: String = ""
+    @State private var folderName: String = ""
+
     @State private var requestData: [String: String] = [:]
+
+    @State private var isSeparateFiles: Bool = false
+
+    @State var mergeTags: [String: String] = [:]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 4) {
-                FileNameInputView(fileName: $fileName)
-                if let folder = domain.saveFolder {
-                    Text("Save Folder: \(folder.path)")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                } else {
-                    Text("Save Folder: Not set")
-                        .font(.caption)
-                        .foregroundColor(.red)
-                }
-            }
-
+            HeaderView
             Divider()
 
             ScrollView {
@@ -59,7 +53,100 @@ struct DomainExportView: View {
             }
             .padding(.top, 10)
         }
+        .onAppear {
+            mergeTags = [
+                "%d-name%": domain.name,
+                "%d-abrr%": domain.abbreviation,
+                "%day%": String(Calendar.current.component(.day, from: Date())),
+                "%month%": String(Calendar.current.component(.month, from: Date())),
+                "%t-all%": requestData2String(requestData: requestData),
+                "%t-name%": requestData.keys.first ?? "",
+                "%t-amount%": requestData[requestData.keys.first ?? ""] ?? ""
+            ]
+        }
+        .onChange(of: requestData) {
+            mergeTags["%t-all%"] = requestData2String(requestData: requestData)
+            mergeTags["%t-name%"] = requestData.keys.first ?? ""
+            mergeTags["%t-amount%"] = requestData[requestData.keys.first ?? ""] ?? ""
+        }
         .padding()
+    }
+
+    private func requestData2String(requestData: [String: String]) -> String {
+        var result: [String] = []
+        let keys = Array(requestData.keys).sorted()
+        for key in keys {
+            let value = requestData[key] ?? ""
+            if value != "" && value != "0" {
+                result.append("\(key)_\(value)")
+            }
+        }
+        return result.joined(separator: "-")
+    }
+
+    private var HeaderView: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            FileNameInputView
+
+            SaveFolderView
+
+            Toggle("Save each type in separate file", isOn: $isSeparateFiles)
+                .toggleStyle(.checkbox)
+        }
+    }
+
+    private var FileNameInputView: some View {
+        HStack {
+            if !isSeparateFiles {
+                Text("File Name:")
+                    .font(.title3)
+                SearchBarWithSuggestions(
+                    query: $fileName,
+                    allItems: Array(mergeTags.keys)
+                ).font(.title3)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+
+            } else {
+                Text("Folder Name:")
+                    .font(.title3)
+                SearchBarWithSuggestions(
+                    query: $folderName,
+                    allItems: Array(mergeTags.keys)
+                )
+                .font(.title3)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                Spacer()
+
+                Text("File Name:")
+                    .font(.title3)
+                SearchBarWithSuggestions(
+                    query: $fileName,
+                    allItems: Array(mergeTags.keys)
+                ).font(.title3)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+            }
+        }
+    }
+
+    private var SaveFolderView: some View {
+        if let folder = domain.saveFolder {
+            if !isSeparateFiles {
+                Text(
+                    "Save Path: \(folder.path)/\(applyMergeTags(to: fileName)).csv"
+                )
+                .font(.caption)
+                .foregroundColor(.gray)
+            } else {
+                Text("Save Path e.g: \(folder.path)/\(applyMergeTags(to: folderName))/\(applyMergeTags(to: fileName)).csv etc.")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+
+        } else {
+            Text("Save Folder: Not set")
+                .font(.caption)
+                .foregroundColor(.red)
+        }
     }
 
     private struct ImportNameInputView: View {
@@ -121,42 +208,98 @@ struct DomainExportView: View {
         .buttonStyle(PlainButtonStyle())
     }
 
-    private func exportLeads() {
-        print(requestData)
-        let leads = domain.getLeadsFromRequest(requestData: requestData)
-        saveFile(content: leads, fileName: fileName)
-        mode = .view
+    func applyMergeTags(to template: String) -> String {
+        var result = template
+        for (key, value) in mergeTags {
+            result = result.replacingOccurrences(of: key, with: value)
+        }
+        return result
     }
 
-    private func saveFile(content: String, fileName: String) {
+    private func exportLeads() {
         guard let folder = domain.saveFolder else {
             print("Choose a save folder first")
             return
         }
-        let fileURL = folder.appendingPathComponent("\(fileName).csv")
+        
+        let results = domain.getLeadsFromRequest(requestData: requestData)
+        if !isSeparateFiles {
+            let emails = results.values.flatMap { $0 }
+            let content = formatEmails(for: emails)
+            let fileURL = folder.appendingPathComponent("\(applyMergeTags(to: fileName)).csv")
+            saveFile(content: content, path: fileURL)
+        } else {
+            for (importName, emails) in results {
+                mergeTags["%t-name%"] = importName
+                mergeTags["%t-amount%"] = String(emails.count)
+                
+                let content = formatEmails(for: emails)
+                let subfolder = folder.appendingPathComponent(
+                    "\(applyMergeTags(to: folderName))/"
+                )
+                ensureFolderExists(at: subfolder)
+                let fileURL = subfolder.appendingPathComponent("\(applyMergeTags(to: fileName)).csv")
+                saveFile(content: content, path: fileURL)
+            }
+        }
+
+        mode = .view
+    }
+    
+    func ensureFolderExists(at url: URL) {
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.createDirectory(
+                at: url,
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+        }
+    }
+
+
+    private func formatEmails(for emails: [String]) -> String {
+        switch domain.exportType {
+        case 1:
+            var strEmails = ""
+            for email in emails {
+                let domainAbbrivation = domain.abbreviation
+
+                let row = "\(email), \(email.replacingOccurrences(of: "@", with: domainAbbrivation))\n"
+                strEmails += row
+            }
+
+            let content = "Email Address,Subscriber Key\n" + strEmails
+            return content
+
+        case 2:
+            var strEmails = ""
+            for email in emails {
+                let domainName = domain.name
+                let domainAbbrivation = domain.abbreviation
+
+                let row = "\(email), \(email + domainAbbrivation), \(domainName)\n"
+                strEmails += row
+            }
+
+            let content = "email,customer_id,domain\n" + strEmails
+            return content
+
+        default:
+            let strEmails = emails.joined(separator: "\n")
+            let content = "Email\n" + strEmails
+            return content
+        }
+    }
+
+    private func saveFile(content: String, path: URL) {
         do {
-            try content.write(to: fileURL, atomically: true, encoding: .utf8)
-            print("File saved at: \(fileURL.path)")
+            try content.write(to: path, atomically: true, encoding: .utf8)
+            print("File saved at: \(path.path)")
         } catch {
             print("Failed to save file: \(error)")
         }
-    }
-}
 
-
-
-
-struct FileNameInputView: View {
-    @Binding var fileName: String
-
-    var body: some View {
-        HStack {
-            Text("File Name:")
-                .font(.title3)
-            TextField("Enter file name", text: $fileName)
-                .font(.title3)
-                .textFieldStyle(PlainTextFieldStyle())
-        }
+        
     }
 }
 
@@ -167,7 +310,7 @@ struct GoBackButtonView: View {
         Button(action: {
             mode = .view
         }) {
-            HStack (spacing: 3) {
+            HStack(spacing: 3) {
                 Image(systemName: "chevron.left")
                     .padding(.vertical, 5)
                 Text("Back")
@@ -176,5 +319,3 @@ struct GoBackButtonView: View {
         }
     }
 }
-
-
