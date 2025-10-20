@@ -19,7 +19,7 @@ struct LoadingOverlay: ViewModifier {
                 .disabled(isShowing) // blocks interaction when loading
 
             if isShowing {
-                Color.black.opacity(0.5)
+                Color.black.opacity(0.4)
                     .edgesIgnoringSafeArea(.all)
 
                 HStack(spacing: 5) {

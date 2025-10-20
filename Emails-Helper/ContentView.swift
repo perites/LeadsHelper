@@ -152,12 +152,3 @@ struct ContentView: View {
 
     
 }
-
-//            DomainDetailView(domain: viewModel.domains.filter($0.id == selectedDomainId).first ?? .id(UUID())
-//
-//            if let domain = selectedDomain, let domainBinding = binding(for: domain) {
-//                DomainDetailView(domain: domainBinding).id(domain.id)
-//            } else {
-//                Text("Select a domain")
-//                    .foregroundStyle(.secondary)
-
