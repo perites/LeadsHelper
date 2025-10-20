@@ -5,15 +5,12 @@
 //  Created by Mykyta Krementar on 17/10/2025.
 //
 
-import SwiftUI
-
-struct DomainImportView: View {
-    @Binding var mode: Mode
-    @Binding var domain: Domain
+class ImportsViewModel: ObservableObject {
+    @Published var emailsFromFiles: [String]? = []
+    @Published var emailsFromText: [String]? = []
     
-    @State var importName: String = ""
-    @State var emailsFromFiles: [String]? = nil
-    @State var emailsFromText: [String]? = nil
+    var filesParseTask: Task<Void, Never>?
+    var textParseTask: Task<Void, Never>?
     
     var emailsAll: [String]? {
         if emailsFromText != nil && emailsFromFiles != nil {
@@ -23,113 +20,230 @@ struct DomainImportView: View {
         }
     }
     
+    func importLeads(
+        importName: String,
+        tagName: String,
+        domainId: Int64
+    ) async {
+        let start = Date()
+        guard let emails = emailsAll else {
+            ToastManager.shared
+                .show(style: .warning, message: "Wait for Leads to load")
+            return
+        }
+        
+        let tagId = getTagId(tagName: tagName, domainId: domainId)
+        
+        var newType = 0
+        if let files = emailsFromFiles, let text = emailsFromText {
+            if !files.isEmpty && !text.isEmpty {
+                newType = 3
+            } else if !files.isEmpty {
+                newType = 1
+            } else if !text.isEmpty {
+                newType = 2
+            }
+        }
+
+        let importId = ImportsTable.addImport(
+            newName: importName,
+            newTagId: tagId,
+            newType: newType
+        )!
+        
+        LeadsTable.addLeadsBulk(
+            newEmails: emails,
+            newImportId: importId,
+            newTagId: tagId
+        )
+        
+        let timeElapsed = Date().timeIntervalSince(start)
+        print("Import took \(timeElapsed) seconds. Type : \(newType)")
+    }
+    
+    func getTagId(tagName: String, domainId: Int64) -> Int64 {
+        var tagId: Int64?
+        
+        tagId = TagsTable.findByName(name: tagName, domainId: domainId)
+        if tagId == nil {
+            tagId = TagsTable.addTag(
+                newName: tagName,
+                newDomainId: domainId
+            )!
+        }
+        return tagId!
+    }
+    
+    func getEmailsFromString(_ input: String) -> [String] {
+        let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+                
+        guard let regex = try? NSRegularExpression(pattern: emailRegex, options: []) else {
+            return []
+        }
+                
+        let range = NSRange(location: 0, length: input.utf16.count)
+                
+        let matches = regex.matches(in: input, options: [], range: range)
+                
+        let emails = Array(Set(matches.compactMap {
+            Range($0.range, in: input).map { String(input[$0]) }
+        }))
+                
+        return emails
+    }
+        
+    enum LeadSource {
+        case files([URL])
+        case text(String)
+    }
+
+    func getLeads(from source: LeadSource) {
+        switch source {
+        case .files(let urls):
+            filesParseTask?.cancel()
+            emailsFromFiles = nil
+            
+            filesParseTask = Task {
+                await self.getLeadsFromFiles(urls: urls)
+            }
+
+        case .text(let inputText):
+            textParseTask?.cancel()
+            emailsFromText = nil
+            textParseTask = Task {
+                await self.getLeadsFromText(text: inputText)
+            }
+        }
+    }
+    
+    private func getLeadsFromFiles(urls: [URL]) async {
+        var combined = ""
+        for url in urls {
+            guard url.startAccessingSecurityScopedResource() else { continue }
+            defer { url.stopAccessingSecurityScopedResource() }
+            combined += (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        }
+        let emails = getEmailsFromString(combined)
+        guard !Task.isCancelled else { return }
+        await MainActor.run {
+            emailsFromFiles = emails
+        }
+    }
+    
+    private func getLeadsFromText(text: String) async {
+        let emails = getEmailsFromString(text)
+        
+        guard !Task.isCancelled else { return }
+        await MainActor.run {
+            emailsFromText = emails
+        }
+    }
+}
+
+import SwiftUI
+
+struct DomainImportView: View {
+    @Binding var mode: Mode
+    @ObservedObject var domain: DomainViewModel
+    
+    @StateObject var viewModel: ImportsViewModel = .init()
+    
+    @State var importName: String = ""
+    @State var tagName: String = ""
+    
+    @State var isLoading: Bool = false
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             ImportNameInputView
+            TagNameInputView
             
             Divider()
             
             HStack {
-                FilesImportView(emailsFromFiles: $emailsFromFiles)
-                TextImportView(emailsFromText: $emailsFromText)
+                FilesImportView(viewModel: viewModel)
+                TextImportView(viewModel: viewModel)
             }
             
             Divider()
             HStack {
-                GoBackButtonView(mode: $mode)
+                GoBackButtonView(mode: $mode, goBackMode: .view)
                 Spacer()
                 Text(
-                    "Total Leads: \(emailsAll?.count.formatted(.number) ?? "Calculating...")"
+                    "Total Leads: \(viewModel.emailsAll?.count.formatted(.number) ?? "Calculating...")"
                 )
                 Spacer()
                 ImportButton
             }
             .padding(.top, 10)
         }.padding()
+            .loadingOverlay(isShowing: $isLoading, text: "Importing...")
     }
-    
+        
     private var ImportNameInputView: some View {
         HStack {
             Text("Import Name:")
+            TextField("Enter Import Name", text: $importName)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+            
+        }.font(.title3)
+    }
+    
+    private var TagNameInputView: some View {
+        HStack {
+            Text("Tag Name:")
             SearchBarWithSuggestions(
-                query: $importName,
-                allItems: domain.importNames
-            ).textFieldStyle(PlainTextFieldStyle())
+                query: $tagName,
+                allItems: domain.tagsInfo.map { $0.name }
+            ).textFieldStyle(RoundedBorderTextFieldStyle())
             
         }.font(.title3)
     }
     
     private var ImportButton: some View {
-        Button(action: {
-            let start = Date()
-            importLeads()
-            let timeElapsed = Date().timeIntervalSince(start)
-            print("Import took \(timeElapsed) seconds.")
-        }) {
-            HStack(spacing: 8) {
-                Image(systemName: "person.fill.badge.plus")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 25, height: 25)
-                Text("Finish Import")
-                    .font(.title2)
+        Button(
+            action: {
+                Task { @MainActor in
+                    isLoading = true
+
+                    await viewModel.importLeads(
+                        importName: importName,
+                        tagName: tagName,
+                        domainId: domain.id
+                    )
+
+                    isLoading = false
+                    domain.updateTagsInfo()
+                    ToastManager.shared.show(style: .success, message: "Import Complete")
+                    mode = .view
+                }
+
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.fill.badge.plus")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 25, height: 25)
+                    Text("Finish Import")
+                        .font(.title2)
+                }
+                .padding(.vertical, 4)
+                .padding(.horizontal, 6)
+                .background(.green.opacity(0.3))
+                .foregroundColor(.white)
+                .cornerRadius(8)
+                .shadow(radius: 2)
             }
-            .padding(.vertical, 4)
-            .padding(.horizontal, 6)
-            .background(.green.opacity(0.3))
-            .foregroundColor(.white)
-            .cornerRadius(8)
-            .shadow(radius: 2)
-        }
-        .buttonStyle(PlainButtonStyle())
+            .buttonStyle(PlainButtonStyle())
     }
-
-    private func importLeads() {
-        guard let emails = emailsAll else {
-            ToastManager.shared
-                .show(style: .error, message: "Leads exported successfully")
-            return
-        }
-        LeadsTable
-            .addLeadsBulk(
-                newEmails: emails,
-                newImportName: importName,
-                newDomain: domain.id
-            )
-        
-        domain.importNames.append(importName)
-        domain.importNames = Array(Set(domain.importNames)).sorted()
-        domain.update()
-        mode = .view
-    }
-}
-
-func getEmailsFromString(_ input: String) -> [String] {
-    let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
-        
-    guard let regex = try? NSRegularExpression(pattern: emailRegex, options: []) else {
-        return []
-    }
-        
-    let range = NSRange(location: 0, length: input.utf16.count)
-        
-    let matches = regex.matches(in: input, options: [], range: range)
-        
-    let emails = Array(Set(matches.compactMap {
-        Range($0.range, in: input).map { String(input[$0]) }
-    }))
-        
-    return emails
 }
 
 private struct FilesImportView: View {
-    @Binding var emailsFromFiles: [String]?
+    @ObservedObject var viewModel: ImportsViewModel
     
     @State var selectedFiles: [URL] = []
     @State private var isFileImporterPresented = false
     
-    @State private var parseTask: Task<Void, Never>? = nil
-
     var body: some View {
         VStack {
             HStack {
@@ -141,44 +255,19 @@ private struct FilesImportView: View {
             SelectedFiles
             
             Text(
-                "Leads from files: \(emailsFromFiles?.count.formatted(.number) ?? "Calculating...")"
+                "Leads from files: \(viewModel.emailsFromFiles?.count.formatted(.number) ?? "Calculating...")"
             )
             .padding()
             .font(.body)
                 
-        }.onChange(of: selectedFiles, initial: true) { _, newSelectedFiles in
-            parseTask?.cancel()
-            
-            emailsFromFiles = nil
-            parseTask = Task.detached { [newSelectedFiles] in
-                var combined = ""
-                for url in newSelectedFiles {
-                    guard url.startAccessingSecurityScopedResource() else { continue }
-                    defer { url.stopAccessingSecurityScopedResource() }
-                    combined += (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-                }
-                let emails = getEmailsFromString(combined)
-                guard !Task.isCancelled else { return }
-                await MainActor.run {
-                    emailsFromFiles = emails
-                }
-            }
+        }.onChange(of: selectedFiles) { _, newSelectedFiles in
+            viewModel.getLeads(from: .files(newSelectedFiles))
         }
         .padding(10)
         .background(Color.gray.opacity(0.1))
         .cornerRadius(8)
     }
     
-    private func readCSV(from url: URL) -> String {
-        do {
-            let data = try String(contentsOf: url, encoding: .utf8)
-            return data
-        } catch {
-            print("Error reading file:", error)
-            return ""
-        }
-    }
-        
     var SelectFilesButton: some View {
         Button(action: {
             isFileImporterPresented.toggle()
@@ -250,12 +339,10 @@ private struct FilesImportView: View {
 }
 
 private struct TextImportView: View {
-    @Binding var emailsFromText: [String]?
+    @ObservedObject var viewModel: ImportsViewModel
     
     @State var textInput: String = ""
     
-    @State private var parseTask: Task<Void, Never>? = nil
-
     var body: some View {
         VStack {
             HStack {
@@ -274,25 +361,13 @@ private struct TextImportView: View {
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.4)))
             
             Text(
-                "Leads from files: \(emailsFromText?.count.formatted(.number) ?? "Calculating...")"
+                "Leads from files: \(viewModel.emailsFromText?.count.formatted(.number) ?? "Calculating...")"
             )
             .padding()
             .font(.body)
             
-        }.onChange(of: textInput, initial: true) { _, newText in
-            parseTask?.cancel() // cancel previous parsing
-            emailsFromText = nil
-            
-            parseTask = Task.detached { [newText] in
-                // Heavy parsing
-                let emails = getEmailsFromString(newText)
-                
-                // Only update if not cancelled
-                guard !Task.isCancelled else { return }
-                await MainActor.run {
-                    emailsFromText = emails
-                }
-            }
+        }.onChange(of: textInput) { _, newText in
+            viewModel.getLeads(from: .text(newText))
         }
         .padding(10)
         .background(Color.gray.opacity(0.1))
@@ -300,47 +375,4 @@ private struct TextImportView: View {
     }
 }
 
-struct SearchBarWithSuggestions: View {
-    @Binding var query: String
-    
-    @State private var suggestions: [String] = []
-    
-    let allItems: [String] // Full list to search from
-    
-    var body: some View {
-        TextField("Search...", text: $query)
-            .onChange(of: query) {
-                updateSuggestions()
-            }
-            .popover(isPresented: Binding(
-                get: { !query.isEmpty &&
-                    !allItems.contains(query) &&
-                    !suggestions.isEmpty
-                },
-                set: { _ in }
-            ), attachmentAnchor: .rect(.bounds), arrowEdge: .bottom) {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(suggestions.prefix(5), id: \.self) { item in
-                        Text(item)
-                            .font(.body)
-                            .onTapGesture {
-                                query = item
-                            }
-                    }
-                }
-                .frame(minWidth: 50)
-                .padding(10)
-                .background(Color(NSColor.windowBackgroundColor))
-            }
-    }
-    
-    func updateSuggestions() {
-        guard !query.isEmpty else {
-            suggestions = []
-            return
-        }
-        suggestions = allItems.filter { $0.lowercased().contains(query.lowercased()) }
-            .prefix(5).map { $0 }
-    }
-}
-   
+

@@ -17,24 +17,26 @@ enum Mode: String {
 }
 
 struct DomainDetailView: View {
-    @Binding var domain: Domain
+    @ObservedObject var domain: DomainViewModel
+    
     @State private var mode: Mode = .view
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             switch mode {
             case .view:
-                DomainInfoView(mode: $mode, domain: $domain)
+                DomainInfoView(mode: $mode, domain: domain)
             case .edit:
+//                Text("Edit View")
                 EditDomainView(
                     mode: $mode,
-                    originalDomain: $domain,
-                    domain: domain
+                    originalDomain: domain
                 )
             case .importLeads:
-                DomainImportView(mode: $mode, domain: $domain)
+                DomainImportView(mode: $mode, domain: domain)
             case .exportLeads:
-                DomainExportView(mode: $mode, domain: $domain)
+                Text("export View")
+//                DomainExportView(mode: $mode, domain: $domain)
             case .deleted:
                 DeleteDomainView()
             }
@@ -45,7 +47,8 @@ struct DomainDetailView: View {
             Button(action: { mode = .edit }) {
                 Image(systemName: "gearshape")
             }
-        }.frame(minWidth: 700, idealWidth: 700)
+        }
+        .frame(minWidth: 700, idealWidth: 700)
     }
 }
 
@@ -57,10 +60,19 @@ struct DeleteDomainView: View {
 
 struct EditDomainView: View {
     @Binding var mode: Mode
-    @Binding var originalDomain: Domain
+    @ObservedObject var originalDomain: DomainViewModel
     
-    @State var domain: Domain
+    @ObservedObject var domain: DomainViewModel
     
+    init(mode: Binding<Mode>, originalDomain: DomainViewModel) {
+        self._mode = mode
+        self.originalDomain = originalDomain
+        // Create a COPY for editing
+        self._domain = .init(
+            initialValue: DomainViewModel(from: originalDomain.dbRow)
+        )
+    }
+
     var body: some View {
         TextField("Name", text: $domain.name)
             .textFieldStyle(.roundedBorder)
@@ -74,12 +86,11 @@ struct EditDomainView: View {
             Text("Blueshift").tag(2)
         }
         .pickerStyle(.segmented)
-        Text(domain.saveFolder != nil ?
-            "Save Folder: \(domain.saveFolder!.path)" :
-            "Save Folder: Not Set")
-
+        
+        Text("Save Folder: \(domain.saveFolder?.path ?? "Not Set")")
         Button("Change Directory") {
             if let url = pickFolder(startingAt: domain.saveFolder) {
+                print("url shoud update")
                 domain.saveFolder = url
             }
         }
@@ -89,8 +100,13 @@ struct EditDomainView: View {
                 mode = .view
             }
             Button("Save") {
-                domain.update()
-                originalDomain = domain
+                originalDomain.name = domain.name
+                originalDomain.abbreviation = domain.abbreviation
+                originalDomain.exportType = domain.exportType
+                originalDomain.saveFolder = domain.saveFolder
+                
+                originalDomain.saveToDb()
+                
                 mode = .view
             }
             .buttonStyle(.borderedProminent)

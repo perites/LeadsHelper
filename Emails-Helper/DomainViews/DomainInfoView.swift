@@ -9,7 +9,7 @@ import SwiftUI
 
 struct DomainInfoView: View {
     @Binding var mode: Mode
-    @Binding var domain: Domain
+    @ObservedObject var domain: DomainViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -62,14 +62,14 @@ struct DomainInfoView: View {
 
         return ScrollView(.vertical) {
             LazyVGrid(columns: columns, spacing: 16) {
-                ForEach(domain.importNames, id: \.self) { importName in
+                ForEach(domain.tagsInfo) { tagInfo in
                     VStack(alignment: .leading) {
-                        Text(importName)
+                        Text(tagInfo.name)
                             .font(.body)
                             .padding(.horizontal, 4)
 
                         ProgressBar(
-                            active: domain.leadsCount(in: importName, isActive: true),
+                            active: tagInfo.count,
                             total: domain.maxLeads
                         )
                         .frame(height: 20)
