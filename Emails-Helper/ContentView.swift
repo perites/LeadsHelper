@@ -25,10 +25,10 @@ class DomainsViewModel: ObservableObject {
 
         return result
     }
-    
+
     func addDomain() {
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd-HH:mm:ss" // customize format
+        formatter.dateFormat = "yyyy-MM-dd-HH:mm:ss"
         let dateString = formatter.string(from: Date())
         let rowId = DomainsTable.addDomain(newName: "New Domain \(dateString)")
         if let rowId {
@@ -38,9 +38,9 @@ class DomainsViewModel: ObservableObject {
                     message: "Domain created successfully!",
                     duration: 3
                 )
-            
+
             domains.append(DomainViewModel(from: DomainsTable.findById(id: rowId)!))
-            
+
         } else {
             ToastManager.shared
                 .show(
@@ -53,10 +53,10 @@ class DomainsViewModel: ObservableObject {
 
 struct ContentView: View {
     @StateObject var viewModel = DomainsViewModel()
-    
+
     @State private var selectedDomainId: Int64?
     @State private var searchText: String = ""
-    
+
     var filteredDomains: [DomainViewModel] {
         if searchText.isEmpty {
             return viewModel.domains.filter { !$0.deleted }
@@ -64,8 +64,9 @@ struct ContentView: View {
             return viewModel.domains.filter { !$0.deleted && ($0.name.localizedCaseInsensitiveContains(searchText) || $0.abbreviation.localizedCaseInsensitiveContains(searchText)) }
         }
     }
-    
+
     var body: some View {
+        ExampleView()
         NavigationSplitView {
             List(selection: $selectedDomainId) {
                 ForEach(filteredDomains) { domain in
@@ -86,62 +87,17 @@ struct ContentView: View {
                     Image(systemName: "plus.circle")
                 }
             }
-            
-            Button {
-                //                    toast = Toast(style: .info, message: "Btw, you are a good person.")
-                ToastManager.shared.show(style: .success, message:
-                    "Leadsexportedsuccessfullysuccessfullysuccessfullysuccessfullysuccessfullysuccessfullysuccessfullysuccessfullysuccessfullysuccessfullysuccessfully ✅", duration: 5)
-                
-            } label: {
-                Text("Run (Info)")
-            }
-            
-            Button {
-                //                    toast = Toast(style: .info, message: "Btw, you are a good person.")
-                ToastManager.shared
-                    .show(
-                        style: .error,
-                        message: "Leads exported successfully ✅"
-                    )
-                
-            } label: {
-                Text("Run (error)")
-            }
-            
-            Button {
-                //                    toast = Toast(style: .info, message: "Btw, you are a good person.")
-                ToastManager.shared
-                    .show(
-                        style: .info,
-                        message: "Leads exported successfully ✅"
-                    )
-                
-            } label: {
-                Text("Run (info)")
-            }
-            
-            Button {
-                //                    toast = Toast(style: .info, message: "Btw, you are a good person.")
-                ToastManager.shared
-                    .show(
-                        style: .warning,
-                        message: "Leads exported successfully ✅"
-                    )
-                
-            } label: {
-                Text("Run (warming)")
-            }
-            
+
         } detail: {
             if let selectedId = selectedDomainId, let domainIndex = viewModel.domains.firstIndex(where: { $0.id == selectedId }) {
                 let domain = viewModel.domains[domainIndex]
-                DomainDetailView(domain: domain).id(selectedId)
+                DomainDetailedView(domain: domain).id(selectedId)
             } else {
                 Text("Select a domain").foregroundStyle(.secondary)
             }
         }
     }
-    
+
     private func binding(for domainId: Int64) -> Binding<DomainViewModel>? {
         guard let index = viewModel.domains.firstIndex(where: { $0.id == domainId }) else {
             print("Domain id: \(domainId) not found in domains")
@@ -149,6 +105,23 @@ struct ContentView: View {
         }
         return $viewModel.domains[index]
     }
+}
 
+struct ExampleView: View {
+    @State private var showDeleteAlert = false
     
+    var body: some View {
+        Button("Delete Domain") {
+            showDeleteAlert = true
+        }
+        .alert("Delete Domain?", isPresented: $showDeleteAlert) {
+            Button("Delete", role: .none) {
+                // Perform deletion
+                print("Domain deleted")
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Are you sure you want to delete this domain? This action cannot be undone.")
+        }
+    }
 }

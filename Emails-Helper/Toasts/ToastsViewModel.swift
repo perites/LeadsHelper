@@ -7,7 +7,6 @@
 
 import Combine
 import SwiftUI
-// MARK: - Toast Manager (Queue)
 
 class ToastManager: ObservableObject {
     static let shared = ToastManager()

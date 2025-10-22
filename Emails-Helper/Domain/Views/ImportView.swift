@@ -8,8 +8,8 @@
 import SwiftUI
 
 struct DomainImportView: View {
-    @Binding var mode: Mode
     @ObservedObject var domain: DomainViewModel
+    @Binding var mode: Mode
     
     @StateObject var viewModel: ImportViewModel = .init()
     
@@ -32,7 +32,7 @@ struct DomainImportView: View {
             
             Divider()
             HStack {
-                GoBackButtonView(mode: $mode, goBackMode: .view)
+                GoBackButtonView(mode: $mode, goBackMode: .info)
                 Spacer()
                 Text(
                     "Total Leads: \(viewModel.emailsAll?.count.formatted(.number) ?? "Calculating...")"
@@ -42,7 +42,7 @@ struct DomainImportView: View {
             }
             .padding(.top, 10)
         }.padding()
-        .loadingOverlay(isShowing: $isImporting, text: "Importing...")
+            .loadingOverlay(isShowing: $isImporting, text: "Importing...")
     }
         
     private var ImportNameInputView: some View {
@@ -87,7 +87,7 @@ struct DomainImportView: View {
                     case .success:
                         domain.updateTagsInfo()
                         ToastManager.shared.show(style: .success, message: "Import Complete")
-                        mode = .view
+                        mode = .info
                     }
                 }
 
@@ -207,7 +207,6 @@ private struct FilesImportView: View {
             }
             .padding(5)
         }
-//        .frame(height: 400)
     }
 }
 
@@ -247,5 +246,3 @@ private struct TextImportView: View {
         .cornerRadius(8)
     }
 }
-
-

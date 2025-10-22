@@ -125,8 +125,8 @@ enum ImportsTable {
             print("Error creating Imports table: \(error)")
         }
     }
-    
-    static func addImport(newName:String, newTagId: Int64, newType: Int) -> Int64? {
+
+    static func addImport(newName: String, newTagId: Int64, newType: Int) -> Int64? {
         do {
             let insert = table.insert(
                 name <- newName,
@@ -145,7 +145,6 @@ enum ImportsTable {
             return nil
         }
     }
-    
 }
 
 enum LeadsTable {
@@ -156,6 +155,7 @@ enum LeadsTable {
     static let isActive = SQLite.Expression<Bool>("isActive")
     static let importId = SQLite.Expression<Int64>("importId")
     static let tagId = SQLite.Expression<Int64>("tagId")
+    static let randomOrder = SQLite.Expression<Double>("randomOrder")
 
     static func createTable(in db: Connection?) {
         guard let db else { return }
@@ -167,6 +167,7 @@ enum LeadsTable {
                     t.column(isActive)
                     t.column(importId)
                     t.column(tagId)
+                    t.column(randomOrder)
 
                     t.foreignKey(
                         importId,
@@ -199,6 +200,7 @@ enum LeadsTable {
                         isActive <- true,
                         importId <- newImportId,
                         tagId <- newTagId,
+                        randomOrder <- Double.random(in: 0 ..< 1)
                     )
                     try db.run(insert)
                 }
@@ -209,16 +211,52 @@ enum LeadsTable {
         }
     }
 
-//    static func allCount() -> Int {
-//        guard let db = DatabaseManager.shared.db else { return -1 }
-//        do {
-//            let count = try db.scalar(table.count)
-//            return count
-//        } catch {
-//            print("Error fetching leads count: \(error)")
-//            return -1
-//        }
-//    }
+    static func countLeads(with tagId: Int64, isActive: Bool = true) -> Int {
+        guard let db = DatabaseManager.shared.db else { return 0 }
+
+        let query = table.filter(
+            (self.tagId == tagId) && (Self.isActive == isActive)
+        )
+
+        do {
+            let count = try db.scalar(query.count)
+            return count
+        } catch {
+            print("Failed count leads with tag \(tagId): \(error)")
+            return 0
+        }
+    }
+
+    static func getEmails(with tagId: Int64, amount: Int) -> [String] {
+        guard let db = DatabaseManager.shared.db else { return [] }
+
+        let query = table.filter((self.tagId == tagId) && (isActive == true))
+            .order(randomOrder)
+            .limit(amount)
+
+        var result: [String] = []
+        var deactivateIDs: [Int64] = []
+
+        do {
+            try db.transaction {
+                for row in try db.prepare(query) {
+                    result.append(row[LeadsTable.email])
+                    deactivateIDs.append(row[LeadsTable.id])
+                }
+
+                if !deactivateIDs.isEmpty {
+                    let deactivateQuery = LeadsTable.table.filter(deactivateIDs.contains(LeadsTable.id))
+                    try db.run(deactivateQuery.update(LeadsTable.isActive <- false))
+                    print("🧹 Deactivated \(deactivateIDs.count) leads")
+                }
+            }
+
+            return result
+        } catch {
+            print("Failed to get leads: \(error)")
+            return []
+        }
+    }
 }
 
 enum DomainsTable {
@@ -269,7 +307,6 @@ enum DomainsTable {
             )
             if let rowId = try DatabaseManager.shared.db?.run(insert) {
                 return rowId
-//                print("domain added with name: \(newName) id: \(rowId)")
             }
 
             return nil

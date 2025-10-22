@@ -5,7 +5,6 @@
 //  Created by Mykyta Krementar on 20/10/2025.
 //
 
-
 import SwiftUI
 
 struct LoadingOverlay: ViewModifier {
@@ -16,7 +15,7 @@ struct LoadingOverlay: ViewModifier {
         ZStack {
             content
                 .blur(radius: isShowing ? 5 : 0)
-                .disabled(isShowing) // blocks interaction when loading
+                .disabled(isShowing)
 
             if isShowing {
                 Color.black.opacity(0.4)
@@ -26,11 +25,10 @@ struct LoadingOverlay: ViewModifier {
                     Text(text)
                         .font(.body)
                     ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle())
+                        .progressViewStyle(.circular)
                         .scaleEffect(0.5)
                 }
                 .padding()
-//                .background(Color.gray.opacity(0.5))
                 .cornerRadius(12)
             }
         }

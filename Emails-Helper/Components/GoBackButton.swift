@@ -10,7 +10,7 @@ import SwiftUI
 struct GoBackButtonView: View {
     @Binding var mode: Mode
     let goBackMode: Mode
-    
+
     var body: some View {
         Button(action: {
             mode = goBackMode

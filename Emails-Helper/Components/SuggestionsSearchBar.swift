@@ -12,7 +12,7 @@ struct SearchBarWithSuggestions: View {
     
     @State private var suggestions: [String] = []
     
-    let allItems: [String] // Full list to search from
+    let allItems: [String]
     
     var body: some View {
         TextField("Search...", text: $query)

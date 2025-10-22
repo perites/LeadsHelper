@@ -7,8 +7,6 @@
 
 import SwiftUI
 
-// MARK: - Toast Model
-
 struct Toast: Equatable, Identifiable {
     let id = UUID()
     var style: ToastStyle

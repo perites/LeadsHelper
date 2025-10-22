@@ -8,9 +8,8 @@
 import SwiftUI
 
 struct DomainInfoView: View {
-    @Binding var mode: Mode
     @ObservedObject var domain: DomainViewModel
-
+    @Binding var mode: Mode
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             DomainHeader
@@ -27,7 +26,7 @@ struct DomainInfoView: View {
                 .font(.title)
                 .fontWeight(.semibold)
             Spacer()
-            
+
             Button(action: {
                 mode = .exportLeads
             }) {
@@ -47,10 +46,7 @@ struct DomainInfoView: View {
                 .shadow(radius: 2)
             }
             .buttonStyle(PlainButtonStyle())
-            
-            
         }
-        
     }
 
     private var LeadsUsageBars: some View {
@@ -69,7 +65,7 @@ struct DomainInfoView: View {
                             .padding(.horizontal, 4)
 
                         ProgressBar(
-                            active: tagInfo.count,
+                            active: tagInfo.activeEmailsCount,
                             total: domain.maxLeads
                         )
                         .frame(height: 20)
@@ -85,7 +81,6 @@ struct DomainInfoView: View {
 
     private var FooterButtons: some View {
         HStack {
-            
             ActionButton(
                 title: "Import",
                 systemImage: "person.fill.badge.plus",
@@ -123,6 +118,10 @@ struct DomainInfoView: View {
             return ratio < 0.20 ? .orange.opacity(0.8) : .teal.opacity(0.8)
         }
 
+        var borderColor: Color {
+            active <= 100 ? .red.opacity(0.8) : .clear
+        }
+
         var body: some View {
             GeometryReader { geo in
                 let usedWidth = total > 0 ? geo.size.width * min(CGFloat(active) / CGFloat(total), 1.0) : 0
@@ -131,6 +130,10 @@ struct DomainInfoView: View {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(Color.gray.opacity(0.3))
                         .frame(width: geo.size.width)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(borderColor, lineWidth: 2)
+                        )
 
                     RoundedRectangle(cornerRadius: 6)
                         .fill(barColor)
@@ -146,7 +149,6 @@ struct DomainInfoView: View {
         }
     }
 }
-
 
 struct ActionButton: View {
     let title: String
@@ -175,5 +177,3 @@ struct ActionButton: View {
         .buttonStyle(PlainButtonStyle())
     }
 }
-
-
