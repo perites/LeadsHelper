@@ -14,7 +14,9 @@ struct DomainSettingsView: View {
     @Binding var mode: Mode
 
     @State private var isShowingFolderPicker = false
-
+    @State private var isShowingDeleteAlert = false
+    
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Header
@@ -96,6 +98,7 @@ struct DomainSettingsView: View {
         Button(
             action: {
                 domain.copyUpdates(from: editableDomain)
+                ToastManager.shared.show(style: .info, message: "Domain \(domain.name) updated")
                 mode = .info
 
             }) {
@@ -120,9 +123,7 @@ struct DomainSettingsView: View {
     private var DeleteButton: some View {
         Button(
             action: {
-                domain.delete()
-                ToastManager.shared.show(style: .info, message: "Domain \(domain.name) deleted successfully")
-                mode = .deleted
+                isShowingDeleteAlert = true
             }) {
                 HStack(spacing: 6) {
                     Image(systemName: "trash")
@@ -140,5 +141,15 @@ struct DomainSettingsView: View {
                 .shadow(radius: 2)
             }
             .buttonStyle(PlainButtonStyle())
+            .alert("Delete Domain?", isPresented: $isShowingDeleteAlert) {
+                Button("Delete", role: .none) {
+                    domain.delete()
+                    ToastManager.shared.show(style: .info, message: "Domain \(domain.name) deleted successfully")
+                    mode = .deleted
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("Are you sure you want to delete this domain? This action cannot be undone.")
+            }
     }
 }

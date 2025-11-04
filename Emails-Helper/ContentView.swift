@@ -6,11 +6,16 @@
 //
 
 import SwiftUI
+import SFSymbols
 
 class DomainsViewModel: ObservableObject {
     @Published var domains: [DomainViewModel]
 
     init() {
+        
+        
+        
+        
         _domains = .init(wrappedValue: Self.fetchDomais())
     }
 
@@ -51,6 +56,20 @@ class DomainsViewModel: ObservableObject {
     }
 }
 
+struct DomainRowView: View {
+    @ObservedObject var domain: DomainViewModel
+
+    var body: some View {
+        if domain.deleted {
+            EmptyView()
+        } else {
+            Text(domain.name)
+                .font(.title3)
+                .tag(domain.id)
+        }
+    }
+}
+
 struct ContentView: View {
     @StateObject var viewModel = DomainsViewModel()
 
@@ -66,13 +85,10 @@ struct ContentView: View {
     }
 
     var body: some View {
-        ExampleView()
         NavigationSplitView {
             List(selection: $selectedDomainId) {
                 ForEach(filteredDomains) { domain in
-                    Text(domain.name)
-                        .font(.title3)
-                        .tag(domain.id)
+                    DomainRowView(domain: domain)
                 }
             }
             .listStyle(.sidebar)
@@ -107,21 +123,4 @@ struct ContentView: View {
     }
 }
 
-struct ExampleView: View {
-    @State private var showDeleteAlert = false
-    
-    var body: some View {
-        Button("Delete Domain") {
-            showDeleteAlert = true
-        }
-        .alert("Delete Domain?", isPresented: $showDeleteAlert) {
-            Button("Delete", role: .none) {
-                // Perform deletion
-                print("Domain deleted")
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("Are you sure you want to delete this domain? This action cannot be undone.")
-        }
-    }
-}
+
