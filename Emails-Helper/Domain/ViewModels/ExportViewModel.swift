@@ -184,7 +184,11 @@ class ExportViewModel: ObservableObject {
         for (index, tagRequest) in tagsRequests.enumerated() {
             let emails = LeadsTable.getEmails(
                 with: tagRequest.tagId,
-                amount: tagRequest.requestedAmount ?? 0
+                domainId: domain.id,
+                amount: tagRequest.requestedAmount ?? 0,
+                domainUseLimit: domain.useLimit,
+                globalUseLimit: domain.globalUseLimit
+                
             )
 
             fulfilledTagsRequests[index].emails = emails

@@ -24,6 +24,8 @@ class DomainViewModel: ObservableObject, Identifiable {
     @Published var saveFolder: URL?
     @Published var deleted: Bool = false
     @Published var lastExportRequest: ExportRequest?
+    @Published var useLimit: Int
+    @Published var globalUseLimit: Int
     
     @Published var tagsInfo: [TagInfo]
     
@@ -53,13 +55,16 @@ class DomainViewModel: ObservableObject, Identifiable {
         
         if let data = dbRow[DomainsTable.lastExportRequest]?.data(using: .utf8),
            let decoded = try? JSONDecoder().decode(
-            ExportRequest.self,
-            from: data
-           ) {
+               ExportRequest.self,
+               from: data
+           )
+        {
             _lastExportRequest = .init(initialValue: decoded)
         }
-
         
+        _useLimit = .init(initialValue: dbRow[DomainsTable.useLimit])
+        _globalUseLimit = .init(initialValue: dbRow[DomainsTable.globalUseLimit])
+           
         if needTags {
             _tagsInfo = .init(initialValue: Self.getTagsInfo(for: id) ?? [])
         } else {
@@ -103,13 +108,13 @@ class DomainViewModel: ObservableObject, Identifiable {
         tagsInfo = Self.getTagsInfo(for: id) ?? []
     }
     
-    func updateLastExportRequest(newExportRequest: ExportRequest){
+    func updateLastExportRequest(newExportRequest: ExportRequest) {
         lastExportRequest = newExportRequest
         let jsonTagsRequests = try? JSONEncoder().encode(newExportRequest)
-                let jsonStringTagsRequests = String(
-                    data: jsonTagsRequests ?? Data(),
-                    encoding: .utf8
-                )!
+        let jsonStringTagsRequests = String(
+            data: jsonTagsRequests ?? Data(),
+            encoding: .utf8
+        )!
         
         do {
             let db = DatabaseManager.shared.db
@@ -185,7 +190,9 @@ class DomainViewModel: ObservableObject, Identifiable {
                 DomainsTable.name <- name,
                 DomainsTable.abbreviation <- abbreviation,
                 DomainsTable.exportType <- exportType,
-                DomainsTable.saveFolder <- Self.createBlob(from: saveFolder)
+                DomainsTable.saveFolder <- Self.createBlob(from: saveFolder),
+                DomainsTable.useLimit <- useLimit,
+                DomainsTable.globalUseLimit <- globalUseLimit
             ))
             
             if let updatedRow = try db?.pluck(domainIdFilter) {
@@ -204,6 +211,8 @@ class DomainViewModel: ObservableObject, Identifiable {
         abbreviation = domain.abbreviation
         exportType = domain.exportType
         saveFolder = domain.saveFolder
+        useLimit = domain.useLimit
+        globalUseLimit = domain.globalUseLimit
         deleted = domain.deleted
         
         saveToDb()

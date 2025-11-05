@@ -15,8 +15,7 @@ struct DomainSettingsView: View {
 
     @State private var isShowingFolderPicker = false
     @State private var isShowingDeleteAlert = false
-    
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Header
@@ -27,6 +26,8 @@ struct DomainSettingsView: View {
                     AbbreviationSettingView
                     ExportTypeSettingView
                     SaveFolderSettingView
+                    UseLimitSettingView
+                    GlobalUseLimitSettingView
                 }
             }
             Divider()
@@ -94,6 +95,28 @@ struct DomainSettingsView: View {
         }
     }
 
+    private var UseLimitSettingView: some View {
+        HStack {
+            Text("Used in this domain at least")
+            TextField("days", value: $editableDomain.useLimit, format: .number)
+                .textFieldStyle(.roundedBorder)
+            Text("days ago")
+        }
+    }
+
+    private var GlobalUseLimitSettingView: some View {
+        HStack {
+            Text("Used overall at least")
+            TextField(
+                "days",
+                value: $editableDomain.globalUseLimit,
+                format: .number
+            )
+            .textFieldStyle(.roundedBorder)
+            Text("days ago")
+        }
+    }
+
     private var SaveButton: some View {
         Button(
             action: {
@@ -147,7 +170,7 @@ struct DomainSettingsView: View {
                     ToastManager.shared.show(style: .info, message: "Domain \(domain.name) deleted successfully")
                     mode = .deleted
                 }
-                Button("Cancel", role: .cancel) { }
+                Button("Cancel", role: .cancel) {}
             } message: {
                 Text("Are you sure you want to delete this domain? This action cannot be undone.")
             }

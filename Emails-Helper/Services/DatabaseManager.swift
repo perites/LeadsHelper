@@ -29,6 +29,22 @@ class DatabaseManager {
             DomainsTable.createTable(in: db)
             TagsTable.createTable(in: db)
             ImportsTable.createTable(in: db)
+            
+            
+            
+//            for row in try! db.prepare(LeadsTable.table) {
+//                print(row[LeadsTable.email])
+//                print(row[LeadsTable.lastUsedAt] as Any)
+//            }
+//
+            
+            
+//            for row in try db.prepare("SELECT email, lastUsedAt, typeof(lastUsedAt) FROM leads") {
+//                print(row)
+//            }
+
+            
+            
 
         } catch {
             print("DB Error: \(error)")
@@ -238,36 +254,96 @@ enum LeadsTable {
         }
     }
 
-    static func getEmails(with tagId: Int64, amount: Int) -> [String] {
+    
+    static func getEmails(
+        with tagId: Int64,
+        domainId: Int64,
+        amount: Int,
+        domainUseLimit: Int,
+        globalUseLimit: Int
+    ) -> [String] {
+
         guard let db = DatabaseManager.shared.db else { return [] }
 
-        let query = table.filter((self.tagId == tagId) && (isActive == true))
-            .order(randomOrder)
-            .limit(amount)
+        // Compute cutoff dates
+        let domainCutoffDate = Calendar.current.date(byAdding: .day, value: -domainUseLimit, to: Date()) ?? Date.distantPast
+        let globalCutoffDate = Calendar.current.date(byAdding: .day, value: -globalUseLimit, to: Date()) ?? Date.distantPast
 
-        var result: [String] = []
-        var deactivateIDs: [Int64] = []
+        let dateFormatter = ISO8601DateFormatter()
+        let domainCutoffString = dateFormatter.string(from: domainCutoffDate)
+        let globalCutoffString = dateFormatter.string(from: globalCutoffDate)
+
+        let sql = """
+        WITH globalRecent AS (
+            SELECT email, MAX(lastUsedAt) AS globalLastUsed
+            FROM leads
+            GROUP BY email
+        ),
+        domainRecent AS (
+            SELECT l.email, MAX(l.lastUsedAt) AS domainLastUsed
+            FROM leads l
+            JOIN tags t ON l.tagId = t.id
+            WHERE t.domainId = ?
+            GROUP BY l.email
+        )
+        SELECT L.id, L.email
+        FROM leads L
+        JOIN tags T ON L.tagId = T.id
+        LEFT JOIN globalRecent G ON L.email = G.email
+        LEFT JOIN domainRecent D ON L.email = D.email
+        WHERE L.tagId = ?
+          AND L.isActive = 1
+          AND (G.globalLastUsed < ? OR G.globalLastUsed IS NULL)
+          AND (D.domainLastUsed < ? OR D.domainLastUsed IS NULL)
+        ORDER BY L.randomOrder
+        LIMIT ?;
+        """
+
+        var emails: [String] = []
+        var idsToDeactivate: [Int64] = []
 
         do {
             try db.transaction {
-                for row in try db.prepare(query) {
-                    result.append(row[LeadsTable.email])
-                    deactivateIDs.append(row[LeadsTable.id])
+                // 1) Fetch leads to use
+                let stmt = try db.prepare(sql, domainId, tagId, globalCutoffString, domainCutoffString, amount)
+
+                for row in stmt {
+                    if let id = row[0] as? Int64,
+                       let email = row[1] as? String {
+                        idsToDeactivate.append(id)
+                        emails.append(email)
+                    }
                 }
 
-                if !deactivateIDs.isEmpty {
-                    let deactivateQuery = LeadsTable.table.filter(deactivateIDs.contains(LeadsTable.id))
-                    try db.run(deactivateQuery.update(LeadsTable.isActive <- false))
-                    print("🧹 Deactivated \(deactivateIDs.count) leads")
+                // 2) Mark these leads as used
+                if !idsToDeactivate.isEmpty {
+                    let placeholders = idsToDeactivate.map { _ in "?" }.joined(separator: ",")
+                    let deactivateSQL = """
+                    UPDATE leads
+                    SET isActive = 0,
+                        lastUsedAt = CURRENT_TIMESTAMP
+                    WHERE id IN (\(placeholders));
+                    """
+
+                    try db.run(deactivateSQL, idsToDeactivate)
+                    print("🧹 Deactivated \(idsToDeactivate.count) leads")
                 }
             }
 
-            return result
+            return emails
+
         } catch {
-            print("Failed to get leads: \(error)")
+            print("❌ getEmails failed:", error)
             return []
         }
     }
+
+
+    
+    
+    
+    
+    
 }
 
 enum DomainsTable {
@@ -279,7 +355,9 @@ enum DomainsTable {
     static let exportType = SQLite.Expression<Int>("exportType")
     static let saveFolder = SQLite.Expression<Blob?>("saveFolder")
     static let lastExportRequest = SQLite.Expression<String?>("lastExportRequest")
-    
+    static let useLimit = SQLite.Expression<Int>("useLimit")
+    static let globalUseLimit = SQLite.Expression<Int>("globalUseLimit")
+
     static func createTable(in db: Connection?) {
         guard let db else { return }
         do {
@@ -291,7 +369,8 @@ enum DomainsTable {
                     t.column(exportType)
                     t.column(saveFolder)
                     t.column(lastExportRequest)
-
+                    t.column(useLimit)
+                    t.column(globalUseLimit)
                 })
 
         } catch {
@@ -317,6 +396,8 @@ enum DomainsTable {
                 name <- newName,
                 abbreviation <- "ABC",
                 exportType <- 0,
+                useLimit <- 0,
+                globalUseLimit <- 0
             )
             if let rowId = try DatabaseManager.shared.db?.run(insert) {
                 return rowId
