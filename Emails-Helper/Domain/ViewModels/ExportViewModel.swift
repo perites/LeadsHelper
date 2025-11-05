@@ -7,7 +7,14 @@
 
 import SwiftUI
 
-struct TagRequest: Identifiable, CustomStringConvertible {
+struct ExportRequest: Codable {
+    let fileName: String
+    let folderName: String
+    let isSeparateFiles: Bool
+    let tags: [TagRequest]
+}
+
+struct TagRequest: Identifiable, Codable, CustomStringConvertible {
     let id = UUID()
     let tagId: Int64
     let tagName: String
@@ -37,6 +44,10 @@ struct TagRequest: Identifiable, CustomStringConvertible {
 class ExportViewModel: ObservableObject {
     @Published var tagsRequests: [TagRequest]
 
+    @Published var fileName: String
+    @Published var folderName: String
+    @Published var isSeparateFiles: Bool
+
     let domain: DomainViewModel
     let allMergeTags: [String] = [
         "%d-name%",
@@ -57,13 +68,25 @@ class ExportViewModel: ObservableObject {
 
     init(domain: DomainViewModel) {
         self.domain = domain
-        self.tagsRequests = domain.tagsInfo.map {
-            TagRequest(
-                tagId: $0.id,
-                tagName: $0.name,
-                tagCount: $0.activeEmailsCount,
-            )
-        }
+
+        _fileName = .init(initialValue: domain.lastExportRequest?.fileName ?? "")
+        _folderName = .init(initialValue: domain.lastExportRequest?.folderName ?? "")
+        _isSeparateFiles = .init(initialValue: domain.lastExportRequest?.isSeparateFiles ?? false)
+
+        _tagsRequests = .init(initialValue:
+            domain.tagsInfo.map { tag in
+                let previous = domain.lastExportRequest?.tags.first {
+                    $0.tagId == tag.id
+                }
+
+                return TagRequest(
+                    tagId: tag.id,
+                    tagName: tag.name,
+                    tagCount: tag.activeEmailsCount,
+                    requestedAmount: previous?.requestedAmount
+                )
+            }
+        )
     }
 
     func applyMergeTags(to template: String, with tagRequest: TagRequest? = nil) -> String {
@@ -90,14 +113,25 @@ class ExportViewModel: ObservableObject {
         case success
     }
 
-    func exportLeads(folderName: String, fileName: String, isSeparateFiles: Bool) async -> ExportResult {
+    func exportLeads() async -> ExportResult {
         guard let folder = domain.saveFolder else {
             print("Choose a save folder first")
             return .noFolder
         }
 
         let fulfilledTagsRequests = fulfillTagsRequests()
+
+        let lastExportRequest = ExportRequest(
+            fileName: fileName,
+            folderName: folderName,
+            isSeparateFiles: isSeparateFiles,
+            tags: tagsRequests
+        )
+
         await MainActor.run {
+            domain
+                .updateLastExportRequest(newExportRequest: lastExportRequest)
+
             tagsRequests = fulfilledTagsRequests
         }
 

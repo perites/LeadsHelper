@@ -23,6 +23,7 @@ class DomainViewModel: ObservableObject, Identifiable {
     @Published var exportType: Int
     @Published var saveFolder: URL?
     @Published var deleted: Bool = false
+    @Published var lastExportRequest: ExportRequest?
     
     @Published var tagsInfo: [TagInfo]
     
@@ -49,6 +50,15 @@ class DomainViewModel: ObservableObject, Identifiable {
             let data = Data(blob.bytes)
             _saveFolder = .init(initialValue: Self.createUrl(from: data))
         }
+        
+        if let data = dbRow[DomainsTable.lastExportRequest]?.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode(
+            ExportRequest.self,
+            from: data
+           ) {
+            _lastExportRequest = .init(initialValue: decoded)
+        }
+
         
         if needTags {
             _tagsInfo = .init(initialValue: Self.getTagsInfo(for: id) ?? [])
@@ -91,6 +101,34 @@ class DomainViewModel: ObservableObject, Identifiable {
     
     func updateTagsInfo() {
         tagsInfo = Self.getTagsInfo(for: id) ?? []
+    }
+    
+    func updateLastExportRequest(newExportRequest: ExportRequest){
+        lastExportRequest = newExportRequest
+        let jsonTagsRequests = try? JSONEncoder().encode(newExportRequest)
+                let jsonStringTagsRequests = String(
+                    data: jsonTagsRequests ?? Data(),
+                    encoding: .utf8
+                )!
+        
+        do {
+            let db = DatabaseManager.shared.db
+            let domainIdFilter = DomainsTable.table.filter(
+                DomainsTable.id == id
+            )
+            try db?.run(domainIdFilter.update(
+                DomainsTable.lastExportRequest <- jsonStringTagsRequests,
+            ))
+            
+            if let updatedRow = try db?.pluck(domainIdFilter) {
+                dbRow = updatedRow
+            }
+            
+            print("Domain updated: \(name)")
+            
+        } catch {
+            print("Failed to update domain: \(error)")
+        }
     }
     
     static func createUrl(from data: Data) -> URL? {

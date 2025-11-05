@@ -20,6 +20,8 @@ class DatabaseManager {
             try db.run("PRAGMA foreign_keys = ON")
 
 //            try db.run(LeadsTable.table.drop(ifExists: true))
+//            try db.run(TagsTable.table.drop(ifExists: true))
+//            try db.run(ImportsTable.table.drop(ifExists: true))
 //            try db.run(DomainsTable.table.drop(ifExists: true))
 //            print("Database cleaned")
 
@@ -152,10 +154,14 @@ enum LeadsTable {
 
     static let id = SQLite.Expression<Int64>("id")
     static let email = SQLite.Expression<String>("email")
-    static let isActive = SQLite.Expression<Bool>("isActive")
-    static let importId = SQLite.Expression<Int64>("importId")
     static let tagId = SQLite.Expression<Int64>("tagId")
+    static let importId = SQLite.Expression<Int64>("importId")
+
+    static let isActive = SQLite.Expression<Bool>("isActive")
+
     static let randomOrder = SQLite.Expression<Double>("randomOrder")
+
+    static let lastUsedAt = SQLite.Expression<Date?>("lastUsedAt")
 
     static func createTable(in db: Connection?) {
         guard let db else { return }
@@ -164,10 +170,21 @@ enum LeadsTable {
                 table.create(ifNotExists: true) { t in
                     t.column(id, primaryKey: .autoincrement)
                     t.column(email)
-                    t.column(isActive)
-                    t.column(importId)
                     t.column(tagId)
+                    t.column(importId)
+
+                    t.column(isActive)
+
                     t.column(randomOrder)
+
+                    t.column(lastUsedAt)
+
+                    t.foreignKey(
+                        tagId,
+                        references: TagsTable.table,
+                        TagsTable.id,
+                        delete: .cascade
+                    )
 
                     t.foreignKey(
                         importId,
@@ -176,12 +193,8 @@ enum LeadsTable {
                         delete: .cascade
                     )
 
-                    t.foreignKey(
-                        tagId,
-                        references: TagsTable.table,
-                        TagsTable.id,
-                        delete: .cascade
-                    )
+                    t.unique(email, tagId)
+
                 })
 
         } catch {
@@ -195,14 +208,12 @@ enum LeadsTable {
         do {
             try db.transaction {
                 for newEmail in newEmails {
-                    let insert = table.insert(
-                        email <- newEmail,
-                        isActive <- true,
-                        importId <- newImportId,
-                        tagId <- newTagId,
-                        randomOrder <- Double.random(in: 0 ..< 1)
-                    )
-                    try db.run(insert)
+                    let sql = """
+                        INSERT INTO leads (email, tagId, importId, isActive, randomOrder)
+                        VALUES (?, ?, ?, 1, ?)
+                        ON CONFLICT(email, tagId) DO UPDATE SET isActive = 1;
+                    """
+                    try db.run(sql, [newEmail, newTagId, newImportId, Double.random(in: 0 ..< 1)])
                 }
             }
             print(" Successfully inserted \(newEmails.count) leads in one transaction")
@@ -267,7 +278,8 @@ enum DomainsTable {
     static let abbreviation = SQLite.Expression<String>("abbreviation")
     static let exportType = SQLite.Expression<Int>("exportType")
     static let saveFolder = SQLite.Expression<Blob?>("saveFolder")
-
+    static let lastExportRequest = SQLite.Expression<String?>("lastExportRequest")
+    
     static func createTable(in db: Connection?) {
         guard let db else { return }
         do {
@@ -278,6 +290,7 @@ enum DomainsTable {
                     t.column(abbreviation)
                     t.column(exportType)
                     t.column(saveFolder)
+                    t.column(lastExportRequest)
 
                 })
 

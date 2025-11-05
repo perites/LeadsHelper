@@ -12,9 +12,7 @@ struct DomainExportView: View {
 
     @Binding var mode: Mode
 
-    @State private var fileName: String = ""
-    @State private var folderName: String = ""
-    @State private var isSeparateFiles: Bool = false
+    
     @State private var isExporting: Bool = false
 
     init(domain: DomainViewModel, mode: Binding<Mode>) {
@@ -68,18 +66,18 @@ struct DomainExportView: View {
             FileNameInputView
             SaveFolderView
 
-            Toggle("Save each tag in separate file", isOn: $isSeparateFiles)
+            Toggle("Save each tag in separate file", isOn: $viewModel.isSeparateFiles)
                 .toggleStyle(.checkbox)
         }
     }
 
     private var FileNameInputView: some View {
         HStack {
-            if isSeparateFiles {
+            if viewModel.isSeparateFiles {
                 Text("Folder Name:")
                     .font(.body)
                 SearchBarWithSuggestions(
-                    query: $folderName,
+                    query: $viewModel.folderName,
                     allItems: Array(viewModel.allMergeTags)
                 )
                 .font(.body)
@@ -93,7 +91,7 @@ struct DomainExportView: View {
             Text("File Name:")
                 .font(.body)
             SearchBarWithSuggestions(
-                query: $fileName,
+                query: $viewModel.fileName,
                 allItems: Array(viewModel.allMergeTags)
             ).font(.body)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -102,15 +100,15 @@ struct DomainExportView: View {
 
     private var SaveFolderView: some View {
         if let folder = viewModel.domain.saveFolder {
-            if !isSeparateFiles {
+            if !viewModel.isSeparateFiles {
                 Text(
-                    "Save Path: \(folder.path)/\(viewModel.applyMergeTags(to: fileName)).csv"
+                    "Save Path: \(folder.path)/\(viewModel.applyMergeTags(to: viewModel.fileName)).csv"
                 )
                 .font(.caption)
                 .foregroundColor(.gray)
             } else {
                 Text(
-                    "Save Path: \(folder.path)/\(viewModel.applyMergeTags(to: folderName))/\(viewModel.applyMergeTags(to: fileName)).csv"
+                    "Save Path: \(folder.path)/\(viewModel.applyMergeTags(to: viewModel.folderName))/\(viewModel.applyMergeTags(to: viewModel.fileName)).csv"
                 )
                 .font(.caption)
                 .foregroundColor(.gray)
@@ -160,11 +158,9 @@ struct DomainExportView: View {
                 Task { @MainActor in
                     isExporting = true
 
-                    let result = await viewModel.exportLeads(
-                        folderName: folderName,
-                        fileName: fileName,
-                        isSeparateFiles: isSeparateFiles
-                    )
+                    let result = await viewModel.exportLeads()
+                       
+                    
 
                     isExporting = false
 
