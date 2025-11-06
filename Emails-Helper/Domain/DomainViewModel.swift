@@ -84,7 +84,11 @@ class DomainViewModel: ObservableObject, Identifiable {
         
         let query = t
             .join(l, on: l[LeadsTable.tagId] == t[TagsTable.id])
-            .filter(t[TagsTable.domainId] == domainId)
+            .filter(
+                (t[TagsTable.domainId] == domainId) && (
+                    t[TagsTable.isActive] == true
+                )
+            )
             .select(t[TagsTable.id], t[TagsTable.name], allLeadsCountExpr)
             .group(t[TagsTable.id], t[TagsTable.name])
         

@@ -24,7 +24,7 @@ struct TagRequest: Identifiable, Codable, CustomStringConvertible {
     var emails: [String] = []
 
     var description: String {
-        return "\(tagName):\(formatNumber(requestedAmount ?? 0))"
+        return "\(tagName)_\(formatNumber(requestedAmount ?? 0))"
     }
 
     func formatNumber(_ num: Int) -> String {

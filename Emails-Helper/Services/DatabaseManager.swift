@@ -57,7 +57,8 @@ enum TagsTable {
     static let id = SQLite.Expression<Int64>("id")
     static let name = SQLite.Expression<String>("name")
     static let domainId = SQLite.Expression<Int64>("domainId")
-
+    static let isActive = SQLite.Expression<Bool>("isActive")
+    
     static func createTable(in db: Connection?) {
         guard let db else { return }
         do {
@@ -66,13 +67,16 @@ enum TagsTable {
                     t.column(id, primaryKey: .autoincrement)
                     t.column(name)
                     t.column(domainId)
-
+                    t.check(isActive)
                     t.foreignKey(
                         domainId,
                         references: DomainsTable.table,
                         DomainsTable.id,
                         delete: .cascade
                     )
+                    
+                    
+                    t.unique(name, domainId)
                 })
         } catch {
             print("Error creating Tags table: \(error)")
@@ -110,6 +114,18 @@ enum TagsTable {
             return nil
         }
     }
+    
+    static func renameTag(id: Int64, to newName: String) {
+        guard let db = DatabaseManager.shared.db else { return }
+        let tag = table.filter(self.id == id)
+        do {
+            let update = tag.update(name <- newName)
+            try db.run(update)
+        } catch {
+            print("Failed to rename tag \(id): \(error)")
+        }
+    }
+    
 }
 
 enum ImportsTable {
@@ -227,7 +243,7 @@ enum LeadsTable {
                     let sql = """
                         INSERT INTO leads (email, tagId, importId, isActive, randomOrder)
                         VALUES (?, ?, ?, 1, ?)
-                        ON CONFLICT(email, tagId) DO UPDATE SET isActive = 1;
+                        ON CONFLICT(email, tagId) DO UPDATE SET isActive = 1, importId = excluded.importId;
                     """
                     try db.run(sql, [newEmail, newTagId, newImportId, Double.random(in: 0 ..< 1)])
                 }
@@ -357,7 +373,9 @@ enum DomainsTable {
     static let lastExportRequest = SQLite.Expression<String?>("lastExportRequest")
     static let useLimit = SQLite.Expression<Int>("useLimit")
     static let globalUseLimit = SQLite.Expression<Int>("globalUseLimit")
-
+    
+    static let isActive = SQLite.Expression<Bool>("isActive")
+    
     static func createTable(in db: Connection?) {
         guard let db else { return }
         do {
@@ -371,6 +389,7 @@ enum DomainsTable {
                     t.column(lastExportRequest)
                     t.column(useLimit)
                     t.column(globalUseLimit)
+                    t.column(isActive)
                 })
 
         } catch {

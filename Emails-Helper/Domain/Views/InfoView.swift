@@ -10,6 +10,13 @@ import SwiftUI
 struct DomainInfoView: View {
     @ObservedObject var domain: DomainViewModel
     @Binding var mode: Mode
+
+    // 💡 State to manage renaming
+    @State private var renamingTagInfo: TagInfo? = nil
+    @State private var newTagName: String = ""
+    @FocusState private var focusedTagId: Int64?
+    
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             DomainHeader
@@ -59,24 +66,128 @@ struct DomainInfoView: View {
         return ScrollView(.vertical) {
             LazyVGrid(columns: columns, spacing: 16) {
                 ForEach(domain.tagsInfo) { tagInfo in
-                    VStack(alignment: .leading) {
-                        Text(tagInfo.name)
-                            .font(.body)
-                            .padding(.horizontal, 4)
-
-                        ProgressBar(
-                            active: tagInfo.activeEmailsCount,
-                            total: domain.maxLeads
-                        )
-                        .frame(height: 20)
-                    }
-                    .padding(10)
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(8)
+                    tagCard(tagInfo)
                 }
             }
             .padding(.horizontal, 4)
         }
+        .clipped(antialiased: false)
+    }
+
+    func performRename() {
+        guard !newTagName.isEmpty, newTagName != renamingTagInfo!.name else {
+            withAnimation { renamingTagInfo = nil
+                focusedTagId = nil}
+            return
+        }
+
+        // 1. Update the database
+        TagsTable.renameTag(id: renamingTagInfo!.id, to: newTagName)
+
+        // 2. Refresh the domain data using the method you provided
+        domain.updateTagsInfo() // 💡 Using the provided method name
+
+        // 3. Exit renaming mode
+
+        // Show confirmation toast
+        ToastManager.shared.show(style: .success, message: "Tag renamed to '\(newTagName)'")
+        withAnimation { renamingTagInfo = nil
+            focusedTagId = nil}
+        newTagName = ""
+    }
+
+    @ViewBuilder
+    private func tagCard(_ tagInfo: TagInfo) -> some View {
+        let isRenaming = renamingTagInfo?.name == tagInfo.name
+
+        // Function to perform the rename logic
+
+        // 💡 The Vstack is the single top-level view, no 'return' needed.
+        VStack(alignment: .leading) {
+            HStack {
+                if isRenaming {
+                    // TextField when renaming
+                    TextField(
+                        "New Tag Name",
+                        text: $newTagName,
+                        onCommit: performRename,
+                    )
+                        .textFieldStyle(.roundedBorder)
+                        .font(.body)
+                        .padding(.horizontal, 4)
+                        .onAppear {
+                            newTagName = tagInfo.name // Pre-fill with current name
+                        }
+                        .focused($focusedTagId, equals: tagInfo.id)
+                } else {
+                    // Text when not renaming
+                    Text(tagInfo.name)
+                        .font(.body)
+                        .padding(.horizontal, 4)
+                }
+
+                Spacer()
+
+                Menu {
+                    Group {
+                        menuButton("Import", icon: "person.fill.badge.plus", tint: .green, action: {
+                            mode = .importLeads
+                        })
+
+                        menuButton("Imports History", icon: "clock.arrow.circlepath", action: {
+                            ToastManager.shared.show(style: .warning, message: "History not implemented yet")
+
+                        })
+
+                        menuButton("Exclude", icon: "minus.circle", action: {
+                            ToastManager.shared.show(style: .warning, message: "Exlude not implemented yet")
+
+                        })
+
+                        menuButton("Download", icon: "arrow.down.circle", action: {
+                            ToastManager.shared.show(style: .warning, message: "Dowload not implemented yet")
+
+                        })
+
+                        Divider()
+
+                        // Action to start the rename
+                        menuButton("Rename", icon: "pencil", action: {
+                            withAnimation { renamingTagInfo = tagInfo
+                                focusedTagId = tagInfo.id}
+                        })
+
+                        menuButton("Delete", icon: "trash", role: .destructive, tint: .red, action: { // 👈 MODIFIED
+                            ToastManager.shared.show(style: .warning, message: "Delte not implemented yet")
+
+                        })
+                    }
+                    .labelStyle(.titleAndIcon)
+                } label: {
+                    Image(systemName: "tag")
+//                        .rotationEffect(.degrees(90))
+                        .foregroundColor(.gray)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .menuIndicator(.hidden)
+                .buttonStyle(.plain)
+            }
+
+            ProgressBar(active: tagInfo.activeEmailsCount, total: domain.maxLeads)
+                .frame(height: 20)
+        }
+        .padding(10)
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(8)
+    }
+
+    /// Creates a button for use inside a Menu
+    private func menuButton(_ title: String, icon: String, role: ButtonRole? = nil, tint: Color? = nil, action: @escaping () -> Void) -> some View {
+        Button(role: role, action: action) {
+            Label(title, systemImage: icon)
+        }
+        .tint(tint)
     }
 
     private var FooterButtons: some View {
