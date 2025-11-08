@@ -82,7 +82,7 @@ class ExportViewModel: ObservableObject {
                 return TagRequest(
                     tagId: tag.id,
                     tagName: tag.name,
-                    tagCount: tag.activeEmailsCount,
+                    tagCount: tag.availableLeadsCount,
                     requestedAmount: previous?.requestedAmount
                 )
             }
@@ -172,7 +172,7 @@ class ExportViewModel: ObservableObject {
         }
 
         await MainActor.run {
-            domain.updateTagsInfo()
+            domain.getTagsInfo()
         }
 
         return .success

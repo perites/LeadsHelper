@@ -34,7 +34,6 @@ struct DomainDetailedView: View {
                         domain: domain,
                         editableDomain: DomainViewModel(
                             from: domain.dbRow,
-                            needTags: false
                         ),
                         mode: $mode
                     )

@@ -10,9 +10,20 @@ import SwiftUI
 
 struct TagInfo: Identifiable {
     let id: Int64
-    let name: String
-    let activeEmailsCount: Int
-    let allEmailsCount: Int
+    var name: String
+    var idealAmount: Int
+    
+    var inactiveLeadsCount: Int
+    var activeLeadsCount: Int
+    var availableLeadsCount: Int
+    
+    var allLeadsCount: Int {
+        inactiveLeadsCount + activeLeadsCount
+    }
+    
+    var unavailableLeadsCount: Int {
+        activeLeadsCount - availableLeadsCount
+    }
 }
 
 class DomainViewModel: ObservableObject, Identifiable {
@@ -29,7 +40,6 @@ class DomainViewModel: ObservableObject, Identifiable {
     
     @Published var tagsInfo: [TagInfo]
     
-    let maxLeads: Int = 50_000
     var strExportType: String {
         switch exportType {
         case 0: "Regular"
@@ -42,7 +52,7 @@ class DomainViewModel: ObservableObject, Identifiable {
     
     var dbRow: Row
     
-    init(from dbRow: Row, needTags: Bool = true) {
+    init(from dbRow: Row) {
         self.id = dbRow[DomainsTable.id]
         _name = .init(initialValue: dbRow[DomainsTable.name])
         _abbreviation = .init(initialValue: dbRow[DomainsTable.abbreviation])
@@ -64,41 +74,27 @@ class DomainViewModel: ObservableObject, Identifiable {
         
         _useLimit = .init(initialValue: dbRow[DomainsTable.useLimit])
         _globalUseLimit = .init(initialValue: dbRow[DomainsTable.globalUseLimit])
-           
-        if needTags {
-            _tagsInfo = .init(initialValue: Self.getTagsInfo(for: id) ?? [])
-        } else {
-            _tagsInfo = .init(initialValue: [])
-        }
+        
+        _tagsInfo = .init(initialValue: [])
         
         self.dbRow = dbRow
     }
     
-    static func getTagsInfo(for domainId: Int64) -> [TagInfo]? {
-        guard let db = DatabaseManager.shared.db else { return nil }
-        
-        let t = TagsTable.table
-        let l = LeadsTable.table
-        
-        let allLeadsCountExpr = l[LeadsTable.id].count
-        
-        let query = t
-            .join(l, on: l[LeadsTable.tagId] == t[TagsTable.id])
-            .filter(
-                (t[TagsTable.domainId] == domainId) && (
-                    t[TagsTable.isActive] == true
-                )
-            )
-            .select(t[TagsTable.id], t[TagsTable.name], allLeadsCountExpr)
-            .group(t[TagsTable.id], t[TagsTable.name])
-        
+    func getTags() -> [(id: Int64, name: String, idealAmount:Int)]? {
+        let query = TagsTable.table.filter(TagsTable.domainId == id && TagsTable.isActive == true).select(
+            TagsTable.id,
+            TagsTable.name,
+            TagsTable.idealAmount
+        )
+                
         do {
-            let result = try db.prepare(query).map { row in
-                TagInfo(
-                    id: row[t[TagsTable.id]],
-                    name: row[t[TagsTable.name]],
-                    activeEmailsCount: LeadsTable.countLeads(with: row[t[TagsTable.id]]),
-                    allEmailsCount: row[allLeadsCountExpr]
+            let result = try DatabaseManager.shared.db.prepare(
+                query
+            ).map { row in
+                (
+                    id: row[TagsTable.id],
+                    name: row[TagsTable.name],
+                    idealAmount: row[TagsTable.idealAmount]
                 )
             }
             return result
@@ -108,10 +104,88 @@ class DomainViewModel: ObservableObject, Identifiable {
         }
     }
     
-    func updateTagsInfo() {
-        tagsInfo = Self.getTagsInfo(for: id) ?? []
+    func getTagsInfo() {
+        let tags = getTags()
+        var result: [TagInfo] = []
+        
+        for tag in tags ?? [] {
+            let tagCount = getTagCount(for: tag.id)
+            
+            result
+                .append(
+                    TagInfo(
+                        id: tag.id,
+                        name: tag.name,
+                        idealAmount: tag.idealAmount,
+                        inactiveLeadsCount: tagCount.inactive,
+                        activeLeadsCount: tagCount.active,
+                        availableLeadsCount: tagCount.available
+                    )
+                )
+        }
+            
+        tagsInfo = result
     }
     
+    func getTagCount(for tagId: Int64) -> (inactive: Int, active: Int, available: Int) {
+        let inactiveLeadsCount = LeadsTable.countAllLeads(with: tagId, active: false)
+        let activeLeadsCount = LeadsTable.countAllLeads(with: tagId, active: true)
+        let availableLeadsCount = LeadsTable.countAvailableLeads(
+            with: tagId,
+            domainId: id,
+            domainUseLimit: useLimit,
+            globalUseLimit: globalUseLimit
+        )
+        
+        return (inactive: inactiveLeadsCount, active: activeLeadsCount, available: availableLeadsCount)
+    }
+    
+    enum TagUpdateType {
+        case count
+        case text(String, Int)
+    }
+
+    func deleteTag(tagId: Int64) {
+        tagsInfo.removeAll { $0.id == tagId }
+    }
+    
+    func addTagInfo(tagId: Int64, name: String, idealAmount:Int) {
+        tagsInfo
+            .append(
+                TagInfo(
+                    id: tagId,
+                    name: name,
+                    idealAmount: idealAmount,
+                    inactiveLeadsCount: 0,
+                    activeLeadsCount: 0,
+                    availableLeadsCount: 0
+                )
+            )
+    }
+    
+    func updateTagInfo(tagId: Int64, type: TagUpdateType) {
+        let index = tagsInfo.firstIndex(where: { $0.id == tagId })
+        guard let index else { return }
+            
+        switch type {
+        case .text(let newName, let newIdealAmount):
+            TagsTable.editTag(id: tagId, newName:newName, newIdealAmount: newIdealAmount)
+            tagsInfo[index].name = newName
+            tagsInfo[index].idealAmount = newIdealAmount
+            
+            
+        case .count:
+            let tagCount = getTagCount(for: tagId)
+            tagsInfo[index].inactiveLeadsCount = tagCount.inactive
+            tagsInfo[index].activeLeadsCount = tagCount.active
+            tagsInfo[index].availableLeadsCount = tagCount.available
+            
+        }
+    }
+    
+   
+    
+
     func updateLastExportRequest(newExportRequest: ExportRequest) {
         lastExportRequest = newExportRequest
         let jsonTagsRequests = try? JSONEncoder().encode(newExportRequest)
@@ -126,7 +200,7 @@ class DomainViewModel: ObservableObject, Identifiable {
                 DomainsTable.id == id
             )
             try db?.run(domainIdFilter.update(
-                DomainsTable.lastExportRequest <- jsonStringTagsRequests,
+                DomainsTable.lastExportRequest <- jsonStringTagsRequests
             ))
             
             if let updatedRow = try db?.pluck(domainIdFilter) {
@@ -215,8 +289,18 @@ class DomainViewModel: ObservableObject, Identifiable {
         abbreviation = domain.abbreviation
         exportType = domain.exportType
         saveFolder = domain.saveFolder
-        useLimit = domain.useLimit
-        globalUseLimit = domain.globalUseLimit
+        
+        if useLimit != domain.useLimit || globalUseLimit != domain.globalUseLimit {
+            useLimit = domain.useLimit
+            globalUseLimit = domain.globalUseLimit
+            getTagsInfo()
+        } else {
+            useLimit = domain.useLimit
+            globalUseLimit = domain.globalUseLimit
+        }
+        
+       
+        
         deleted = domain.deleted
         
         saveToDb()

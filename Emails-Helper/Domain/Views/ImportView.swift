@@ -85,7 +85,7 @@ struct DomainImportView: View {
                     case .failure:
                         ToastManager.shared.show(style: .error, message: "Error while importing leads")
                     case .success(let count):
-                        domain.updateTagsInfo()
+                        domain.getTagsInfo()
                         ToastManager.shared
                             .show(
                                 style: count > 0 ? .success : .warning,

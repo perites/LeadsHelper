@@ -40,10 +40,10 @@ class ImportViewModel: ObservableObject {
         
         let tagId = getTagId(tagName: tagName, domainId: domainId)
         
-        let activeLeadsCountBeforeImport = LeadsTable.countLeads(
-            with: tagId,
-            isActive: true
-        )
+//        let activeLeadsCountBeforeImport = LeadsTable.countLeads(
+//            with: tagId,
+//            isActive: true
+//        )
         
         var newType = 0
         if let files = emailsFromFiles, let text = emailsFromText {
@@ -68,14 +68,15 @@ class ImportViewModel: ObservableObject {
             newTagId: tagId
         )
         
-        let activeLeadsCountAfterImport = LeadsTable.countLeads(
-            with: tagId,
-            isActive: true
-        )
+//        let activeLeadsCountAfterImport = LeadsTable.countLeads(
+//            with: tagId,
+//            isActive: true
+//        )
         
         let timeElapsed = Date().timeIntervalSince(start)
         print("Import took \(timeElapsed) seconds. Type : \(newType)")
-        return .success(activeLeadsCountAfterImport - activeLeadsCountBeforeImport)
+        return .success(0)
+//        return .success(activeLeadsCountAfterImport - activeLeadsCountBeforeImport)
     }
     
     func getTagId(tagName: String, domainId: Int64) -> Int64 {

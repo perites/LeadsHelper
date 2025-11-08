@@ -12,8 +12,9 @@ struct DomainInfoView: View {
     @Binding var mode: Mode
 
     // 💡 State to manage renaming
-    @State private var renamingTagInfo: TagInfo? = nil
+    @State private var editedTagInfo: TagInfo? = nil
     @State private var newTagName: String = ""
+    @State private var newIdealAmount: Int = 0
     @FocusState private var focusedTagId: Int64?
 
     var body: some View {
@@ -35,13 +36,10 @@ struct DomainInfoView: View {
                 BulkActionMenu
             }
             .font(.title3)
-            
             .background(Color.gray.opacity(0.3))
             .cornerRadius(8)
             .shadow(radius: 2)
             .buttonStyle(PlainButtonStyle())
-            
-            
         }
     }
 
@@ -56,13 +54,11 @@ struct DomainInfoView: View {
             HStack(spacing: 4) {
                 Image(systemName: "arrow.down.document")
                     .foregroundColor(.yellow.opacity(1))
-                Text("Export")
+                Text("Create Export")
             }
             .padding(7)
-            .contentShape(Rectangle())        // ensures full tap area
-
+            .contentShape(Rectangle())
         }
-        
     }
 
     private var BulkActionMenu: some View {
@@ -81,10 +77,46 @@ struct DomainInfoView: View {
                     ToastManager.shared.show(style: .warning, message: "Bulk dwoload not implemented yet")
 
                 })
+
+                Divider()
+
+                menuButton(
+                    "Add new tag",
+                    icon: "plus.circle",
+                    action: {
+                        let formatter = DateFormatter()
+                        formatter.dateFormat = "yyyy-MM-dd-HH:mm:ss"
+                        let dateString = formatter.string(from: Date())
+                        let newName = "New Tag \(dateString)"
+                        let createdTagId = TagsTable
+                            .addTag(
+                                newName: newName,
+                                newDomainId: domain.id
+                            )
+
+                        guard let createdTagId else {
+                            ToastManager.shared
+                                .show(
+                                    style: .error,
+                                    message: "Tag creation failed"
+                                )
+                            return
+                        }
+                        ToastManager.shared.show(style: .success, message: "Tag created successfully")
+                        domain
+                            .addTagInfo(
+                                tagId: createdTagId,
+                                name: newName,
+                                idealAmount: 0
+                            )
+                        editedTagInfo = domain.tagsInfo.first { $0.id == createdTagId }
+                        focusedTagId = createdTagId
+                    }
+                )
             }
             .labelStyle(.titleAndIcon)
         } label: {
-            HStack{
+            HStack {
                 Image(systemName: "person.2.fill")
                     .padding(8)
             }
@@ -110,117 +142,128 @@ struct DomainInfoView: View {
         }
     }
 
-    func performRename() {
-        guard !newTagName.isEmpty, newTagName != renamingTagInfo!.name else {
-            renamingTagInfo = nil
-            focusedTagId = nil
-            return
-        }
-
-        // 1. Update the database
-        TagsTable.renameTag(id: renamingTagInfo!.id, to: newTagName)
-
-        // 2. Refresh the domain data using the method you provided
-        domain.updateTagsInfo() // 💡 Using the provided method name
-
-        // 3. Exit renaming mode
-
-        // Show confirmation toast
-        ToastManager.shared.show(style: .success, message: "Tag renamed to '\(newTagName)'")
-        
-        renamingTagInfo = nil
-        focusedTagId = nil
-        newTagName = ""
-    }
-
     @ViewBuilder
     private func tagCard(_ tagInfo: TagInfo) -> some View {
-        let isRenaming = renamingTagInfo?.name == tagInfo.name
+        let isEdited = editedTagInfo?.name == tagInfo.name
 
         // Function to perform the rename logic
 
         // 💡 The Vstack is the single top-level view, no 'return' needed.
         VStack(alignment: .leading) {
-            HStack {
-                if isRenaming {
-                    // TextField when renaming
-                    TextField(
-                        "New Tag Name",
-                        text: $newTagName,
-                        onCommit: performRename
-                    )
-                    .textFieldStyle(.roundedBorder)
-//                    .padding(.horizontal, 4)
-                    .onAppear {
-                        newTagName = tagInfo.name // Pre-fill with current name
-                    }
-                    .focused($focusedTagId, equals: tagInfo.id)
-                } else {
-                    // Text when not renaming
-                    Text(tagInfo.name)
-                        .padding(.horizontal, 4)
-                }
-
-                Spacer()
-
-                Menu {
-                    Group {
-                        menuButton("Import", icon: "person.fill.badge.plus", tint: .green, action: {
-                            mode = .importLeads
-                        })
-
-                        menuButton("Imports History", icon: "clock.arrow.circlepath", action: {
-                            ToastManager.shared.show(style: .warning, message: "History not implemented yet")
-
-                        })
-
-                        menuButton("Exclude", icon: "minus.circle", action: {
-                            ToastManager.shared.show(style: .warning, message: "Exlude not implemented yet")
-
-                        })
-
-                        menuButton("Download", icon: "arrow.down.circle", action: {
-                            ToastManager.shared.show(style: .warning, message: "Dowload not implemented yet")
-
-                        })
-
-                        Divider()
-
-                        // Action to start the rename
-                        menuButton("Rename", icon: "pencil", action: {
-                            renamingTagInfo = tagInfo
-                            focusedTagId = tagInfo.id
-                        })
-
-                        menuButton("Delete", icon: "trash", role: .destructive, tint: .red, action: { // 👈 MODIFIED
-                            ToastManager.shared.show(style: .warning, message: "Delte not implemented yet")
-
-                        })
-                    }
-                    .labelStyle(.titleAndIcon)
-                } label: {
-                    Image(systemName: "tag")
-                        .padding(4)
-//                        .font(.body)
-//                        .background(Color.gray.opacity(0.3))
-                        .cornerRadius(8)
-                        .shadow(radius: 2)
-//                        .rotationEffect(.degrees(90))
-//                        .foregroundColor(.gray)
-
-//                        .frame(width: 24, height: 24)
-//                        .contentShape(Rectangle())
-                }
-                .menuIndicator(.hidden)
-                .buttonStyle(PlainButtonStyle())
+            if isEdited {
+                EditedTagCardElements(tagInfo)
+            } else {
+                TagCardElements(tagInfo)
             }
-
-            ProgressBar(active: tagInfo.activeEmailsCount, total: domain.maxLeads)
-                .frame(height: 20)
         }
         .padding(10)
         .background(Color.gray.opacity(0.1))
         .cornerRadius(8)
+    }
+
+    @ViewBuilder
+    private func TagCardElements(_ tagInfo: TagInfo) -> some View {
+        HStack {
+            Text(tagInfo.name)
+                .padding(.horizontal, 4)
+
+            Spacer()
+
+            Menu {
+                Group {
+                    menuButton("Import", icon: "person.fill.badge.plus", tint: .green, action: {
+                        mode = .importLeads
+                    })
+
+                    menuButton("Imports History", icon: "clock.arrow.circlepath", action: {
+                        ToastManager.shared.show(style: .warning, message: "History not implemented yet")
+
+                    })
+
+                    menuButton("Exclude", icon: "minus.circle", action: {
+                        ToastManager.shared.show(style: .warning, message: "Exlude not implemented yet")
+
+                    })
+
+                    menuButton("Download", icon: "arrow.down.circle", action: {
+                        ToastManager.shared.show(style: .warning, message: "Dowload not implemented yet")
+
+                    })
+
+                    Divider()
+
+                    // Action to start the rename
+                    menuButton("Edit", icon: "pencil", action: {
+                        editedTagInfo = tagInfo
+                        focusedTagId = tagInfo.id
+                    })
+
+                    menuButton(
+                        "Delete",
+                        icon: "trash",
+                        role: .destructive,
+                        tint: .red,
+                        action: {
+                            TagsTable.deleteTag(id: tagInfo.id)
+                            domain.deleteTag(tagId: tagInfo.id)
+
+                            ToastManager.shared
+                                .show(
+                                    style: .info,
+                                    message: "Tag \(tagInfo.name) deleted"
+                                )
+                        }
+                    )
+                }
+                .labelStyle(.titleAndIcon)
+            } label: {
+                Image(systemName: "tag")
+                    .padding(4)
+                    .cornerRadius(8)
+                    .shadow(radius: 2)
+            }
+            .menuIndicator(.hidden)
+            .buttonStyle(PlainButtonStyle())
+        }
+
+        ProgressBar(tagInfo: tagInfo)
+            .frame(height: 20)
+    }
+
+    @ViewBuilder
+    private func EditedTagCardElements(_ tagInfo: TagInfo) -> some View {
+        VStack {
+            // TextField when renaming
+            TextField(
+                "New Tag Name",
+                text: $newTagName
+            )
+            .textFieldStyle(.roundedBorder)
+            //                    .padding(.horizontal, 4)
+            .onAppear {
+                newTagName = tagInfo.name // Pre-fill with current name
+            }
+            .focused($focusedTagId, equals: tagInfo.id)
+
+            TextField(
+                "Ideal Leads Amount",
+                value: $newIdealAmount,
+                format: .number
+            )
+            .textFieldStyle(.roundedBorder)
+            //                    .padding(.horizontal, 4)
+            .onAppear {
+                newIdealAmount = tagInfo.idealAmount // Pre-fill with current name
+            }
+
+            Button("Save", action: {
+                editedTagInfo = nil
+                focusedTagId = nil
+                guard !newTagName.isEmpty else { return }
+                domain.updateTagInfo(tagId: tagInfo.id, type: .text(newTagName, newIdealAmount))
+                ToastManager.shared.show(style: .info, message: "Tag saved")
+            })
+        }
     }
 
     /// Creates a button for use inside a Menu
@@ -260,23 +303,58 @@ struct DomainInfoView: View {
     }
 
     private struct ProgressBar: View {
-        let active: Int
-        let total: Int
+        let tagInfo: TagInfo
 
-        var barColor: Color {
-            guard total > 0 else { return .teal.opacity(0.8) }
-            if active >= total { return .indigo.opacity(0.6) }
-            let ratio = Double(active) / Double(total)
-            return ratio < 0.20 ? .orange.opacity(0.8) : .teal.opacity(0.8)
+        enum BarColor {
+            static let allGood = Color.green.opacity(0.8)
+            static let alright = Color.blue.opacity(0.6)
+            static let notSoGood = Color.orange.opacity(0.8)
+            static let bad = Color.red.opacity(0.8)
         }
 
-        var borderColor: Color {
-            active <= 100 ? .red.opacity(0.8) : .clear
+        enum BarColorScheme {
+            static let `default` = (barColor: BarColor.alright, borderColor: Color.clear)
+            static let great = (barColor: BarColor.allGood, borderColor: Color.clear)
+            static let warning = (barColor: BarColor.notSoGood, borderColor: Color.clear)
+            static let critical = (barColor: BarColor.bad, borderColor: BarColor.bad)
+        }
+
+        var colorScheme: (barColor: Color, borderColor: Color) {
+            guard tagInfo.idealAmount > 0 else {
+                return BarColorScheme.default
+            }
+
+            let ratio = Double(tagInfo.availableLeadsCount) / Double(
+                tagInfo.idealAmount
+            )
+
+            switch ratio {
+            case 0..<0.2:
+                return BarColorScheme.critical
+            case 0.2..<0.4:
+                return BarColorScheme.warning
+            case 0.4..<1:
+                return BarColorScheme.default
+            case 1...:
+                return BarColorScheme.great
+            default:
+                return BarColorScheme.default
+            }
         }
 
         var body: some View {
             GeometryReader { geo in
-                let usedWidth = total > 0 ? geo.size.width * min(CGFloat(active) / CGFloat(total), 1.0) : 0
+                let usedWidth = tagInfo.idealAmount > 0 ? geo.size.width * min(
+                    CGFloat(tagInfo.activeLeadsCount) / CGFloat(
+                        tagInfo.idealAmount
+                    ),
+                    1.0
+                ) : 0
+
+                let unavailableWidth = tagInfo.idealAmount > 0 ? geo.size.width * min(
+                    CGFloat(tagInfo.unavailableLeadsCount) / CGFloat(tagInfo.idealAmount),
+                    1.0
+                ) : 0
 
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 6)
@@ -284,15 +362,19 @@ struct DomainInfoView: View {
                         .frame(width: geo.size.width)
                         .overlay(
                             RoundedRectangle(cornerRadius: 6)
-                                .stroke(borderColor, lineWidth: 2)
+                                .stroke(colorScheme.borderColor, lineWidth: 2)
                         )
 
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(barColor)
+                        .fill(colorScheme.barColor)
                         .frame(width: usedWidth)
 
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.gray.opacity(0.8))
+                        .frame(width: unavailableWidth)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                     HStack {
-                        Text("\(active)")
+                        Text("\(tagInfo.availableLeadsCount)")
                             .foregroundColor(.white)
                             .padding(.leading, 10)
                     }

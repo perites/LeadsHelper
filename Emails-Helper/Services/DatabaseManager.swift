@@ -29,30 +29,20 @@ class DatabaseManager {
             DomainsTable.createTable(in: db)
             TagsTable.createTable(in: db)
             ImportsTable.createTable(in: db)
-            
-            
-            
-//            for row in try! db.prepare(LeadsTable.table) {
-//                print(row[LeadsTable.email])
-//                print(row[LeadsTable.lastUsedAt] as Any)
-//            }
-//
-            
-            
+
+            for row in try! db.prepare(TagsTable.table) {
+                print(row[TagsTable.name])
+            }
+
+
 //            for row in try db.prepare("SELECT email, lastUsedAt, typeof(lastUsedAt) FROM leads") {
 //                print(row)
 //            }
-
-            
-            
 
         } catch {
             print("DB Error: \(error)")
         }
     }
-    
-    
-
 
     func databaseConnection() throws -> Connection {
         let fm = FileManager.default
@@ -74,9 +64,6 @@ class DatabaseManager {
 
         return try Connection(dbURL.path)
     }
-
-    
-    
 }
 
 enum TagsTable {
@@ -85,6 +72,7 @@ enum TagsTable {
     static let name = SQLite.Expression<String>("name")
     static let domainId = SQLite.Expression<Int64>("domainId")
     static let isActive = SQLite.Expression<Bool>("isActive")
+    static let idealAmount = SQLite.Expression<Int>("idealAmount")
     
     static func createTable(in db: Connection?) {
         guard let db else { return }
@@ -95,32 +83,19 @@ enum TagsTable {
                     t.column(name)
                     t.column(domainId)
                     t.column(isActive)
+                    t.column(idealAmount)
+                    
                     t.foreignKey(
                         domainId,
                         references: DomainsTable.table,
                         DomainsTable.id,
                         delete: .cascade
                     )
-                    
-                    
+
                     t.unique(name, domainId)
                 })
         } catch {
             print("Error creating Tags table: \(error)")
-        }
-    }
-
-    static func findByName(name: String, domainId: Int64) -> Int64? {
-        guard let db = DatabaseManager.shared.db else { return nil }
-
-        do {
-            let query = table.filter((self.name == name) && (self.domainId == domainId))
-            let tag = try db.pluck(query)
-
-            return tag?[id]
-        } catch {
-            print("Error fetching domain by ID: \(error)")
-            return nil
         }
     }
 
@@ -129,6 +104,7 @@ enum TagsTable {
             let insert = table.insert(
                 name <- newName,
                 domainId <- newDomainId,
+                idealAmount <- 0,
                 isActive <- true
             )
 
@@ -142,18 +118,43 @@ enum TagsTable {
             return nil
         }
     }
+
     
-    static func renameTag(id: Int64, to newName: String) {
+    static func findByName(name: String, domainId: Int64) -> Int64? {
+        guard let db = DatabaseManager.shared.db else { return nil }
+
+        do {
+            let query = table.filter((self.name == name) && (self.domainId == domainId))
+            let tag = try db.pluck(query)
+
+            return tag?[id]
+        } catch {
+            print("Error fetching domain by ID: \(error)")
+            return nil
+        }
+    }
+    
+    static func editTag(id: Int64, newName: String, newIdealAmount: Int) {
         guard let db = DatabaseManager.shared.db else { return }
         let tag = table.filter(self.id == id)
         do {
-            let update = tag.update(name <- newName)
+            let update = tag.update(name <- newName, idealAmount <- newIdealAmount)
             try db.run(update)
         } catch {
             print("Failed to rename tag \(id): \(error)")
         }
     }
     
+    static func deleteTag(id: Int64) {
+        guard let db = DatabaseManager.shared.db else { return }
+        let tag = table.filter(self.id == id)
+        do {
+            let update = tag.update(isActive <- false)
+            try db.run(update)
+        } catch {
+            print("Failed to delete tag \(id): \(error)")
+        }
+    }
 }
 
 enum ImportsTable {
@@ -282,13 +283,11 @@ enum LeadsTable {
         }
     }
 
-    static func countLeads(with tagId: Int64, isActive: Bool = true) -> Int {
+    static func countAllLeads(with tagId: Int64, active:Bool) -> Int {
         guard let db = DatabaseManager.shared.db else { return 0 }
 
-        let query = table.filter(
-            (self.tagId == tagId) && (Self.isActive == isActive)
-        )
-
+        let query = table.filter((self.tagId == tagId) && (self.isActive == active))
+        
         do {
             let count = try db.scalar(query.count)
             return count
@@ -297,7 +296,75 @@ enum LeadsTable {
             return 0
         }
     }
+    
+    
+    static func countAvailableLeads(
+        with tagId: Int64,
+        domainId: Int64,
+        domainUseLimit: Int,
+        globalUseLimit: Int
+    ) -> Int {
+        guard let db = DatabaseManager.shared.db else { return 0 }
 
+        // 1. Compute cutoff dates
+        let domainCutoffDate = Calendar.current.date(byAdding: .day, value: -domainUseLimit, to: Date()) ?? Date.distantPast
+        let globalCutoffDate = Calendar.current.date(byAdding: .day, value: -globalUseLimit, to: Date()) ?? Date.distantPast
+
+        let dateFormatter = ISO8601DateFormatter()
+        let domainCutoffString = dateFormatter.string(from: domainCutoffDate)
+        let globalCutoffString = dateFormatter.string(from: globalCutoffDate)
+
+        let sql = """
+        WITH globalRecent AS (
+            SELECT email, MAX(lastUsedAt) AS globalLastUsed
+            FROM leads
+            GROUP BY email
+        ),
+        domainRecent AS (
+            SELECT l.email, MAX(l.lastUsedAt) AS domainLastUsed
+            FROM leads l
+            JOIN tags t ON l.tagId = t.id
+            WHERE t.domainId = ?
+            GROUP BY l.email
+        )
+        SELECT COUNT(L.id)
+        FROM leads L
+        JOIN tags T ON L.tagId = T.id
+        LEFT JOIN globalRecent G ON L.email = G.email
+        LEFT JOIN domainRecent D ON L.email = D.email
+        WHERE L.tagId = ?
+          AND L.isActive = 1
+          AND (G.globalLastUsed < ? OR G.globalLastUsed IS NULL)
+          AND (D.domainLastUsed < ? OR D.domainLastUsed IS NULL);
+        """
+
+        do {
+            // The parameters are bound in the order of the '?' placeholders in the SQL
+            let parameters: [Binding] = [
+                domainId, // for t.domainId = ? in domainRecent CTE
+                tagId,    // for L.tagId = ? in main WHERE clause
+                globalCutoffString, // for G.globalLastUsed < ?
+                domainCutoffString  // for D.domainLastUsed < ?
+            ]
+            
+            let availableCount = try db.scalar(sql, parameters)
+
+            if let result = availableCount as? Int64 {
+                return Int(result)
+            } else {
+                return 0
+            }
+        } catch {
+            print("❌ countAvailableLeads failed for tagId \(tagId): \(error)")
+            return 0
+        }
+    }
+    
+    
+    
+    
+    
+    
     
     static func getEmails(
         with tagId: Int64,
@@ -306,7 +373,6 @@ enum LeadsTable {
         domainUseLimit: Int,
         globalUseLimit: Int
     ) -> [String] {
-
         guard let db = DatabaseManager.shared.db else { return [] }
 
         // Compute cutoff dates
@@ -353,7 +419,8 @@ enum LeadsTable {
 
                 for row in stmt {
                     if let id = row[0] as? Int64,
-                       let email = row[1] as? String {
+                       let email = row[1] as? String
+                    {
                         idsToDeactivate.append(id)
                         emails.append(email)
                     }
@@ -381,13 +448,6 @@ enum LeadsTable {
             return []
         }
     }
-
-
-    
-    
-    
-    
-    
 }
 
 enum DomainsTable {
@@ -401,9 +461,7 @@ enum DomainsTable {
     static let lastExportRequest = SQLite.Expression<String?>("lastExportRequest")
     static let useLimit = SQLite.Expression<Int>("useLimit")
     static let globalUseLimit = SQLite.Expression<Int>("globalUseLimit")
-    
     static let isActive = SQLite.Expression<Bool>("isActive")
-    
     static func createTable(in db: Connection?) {
         guard let db else { return }
         do {

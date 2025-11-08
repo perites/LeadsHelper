@@ -5,17 +5,13 @@
 //  Created by Mykyta Krementar on 12/10/2025.
 //
 
-import SwiftUI
 import SFSymbols
+import SwiftUI
 
 class DomainsViewModel: ObservableObject {
     @Published var domains: [DomainViewModel]
 
     init() {
-        
-        
-        
-        
         _domains = .init(wrappedValue: Self.fetchDomais())
     }
 
@@ -25,7 +21,10 @@ class DomainsViewModel: ObservableObject {
         }
 
         let result = rows.map { row in
-            DomainViewModel(from: row)
+            let domain = DomainViewModel(from: row)
+            domain.getTagsInfo()
+            
+            return domain
         }
 
         return result
@@ -122,5 +121,3 @@ struct ContentView: View {
         return $viewModel.domains[index]
     }
 }
-
-
