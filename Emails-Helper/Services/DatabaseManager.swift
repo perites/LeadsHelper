@@ -16,7 +16,7 @@ class DatabaseManager {
 
     init() {
         do {
-            db = try Connection("emails-helper-db.sqlite3")
+            db = try databaseConnection()
             try db.run("PRAGMA foreign_keys = ON")
 
 //            try db.run(LeadsTable.table.drop(ifExists: true))
@@ -50,6 +50,33 @@ class DatabaseManager {
             print("DB Error: \(error)")
         }
     }
+    
+    
+
+
+    func databaseConnection() throws -> Connection {
+        let fm = FileManager.default
+
+        let appSupport = try fm.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+
+        let folder = appSupport.appendingPathComponent("EmailsHelper", isDirectory: true)
+
+        if !fm.fileExists(atPath: folder.path) {
+            try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+
+        let dbURL = folder.appendingPathComponent("emails-helper-db.sqlite3")
+
+        return try Connection(dbURL.path)
+    }
+
+    
+    
 }
 
 enum TagsTable {
@@ -67,7 +94,7 @@ enum TagsTable {
                     t.column(id, primaryKey: .autoincrement)
                     t.column(name)
                     t.column(domainId)
-                    t.check(isActive)
+                    t.column(isActive)
                     t.foreignKey(
                         domainId,
                         references: DomainsTable.table,
@@ -102,6 +129,7 @@ enum TagsTable {
             let insert = table.insert(
                 name <- newName,
                 domainId <- newDomainId,
+                isActive <- true
             )
 
             if let rowId = try DatabaseManager.shared.db?.run(insert) {
@@ -416,7 +444,8 @@ enum DomainsTable {
                 abbreviation <- "ABC",
                 exportType <- 0,
                 useLimit <- 0,
-                globalUseLimit <- 0
+                globalUseLimit <- 0,
+                isActive <- true
             )
             if let rowId = try DatabaseManager.shared.db?.run(insert) {
                 return rowId

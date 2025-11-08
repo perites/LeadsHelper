@@ -41,7 +41,7 @@ struct DomainImportView: View {
                 ImportButton
             }
             .padding(.top, 10)
-        }.padding()
+        }
             .loadingOverlay(isShowing: $isImporting, text: "Importing...")
     }
         

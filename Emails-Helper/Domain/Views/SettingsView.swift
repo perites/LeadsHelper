@@ -36,7 +36,7 @@ struct DomainSettingsView: View {
                 Spacer()
                 SaveButton
             }
-        }.padding()
+        }
     }
 
     private var Header: some View {

@@ -57,7 +57,7 @@ struct DomainExportView: View {
                 ExportButton
             }
             .padding(.top, 10)
-        }.padding()
+        }
             .loadingOverlay(isShowing: $isExporting, text: "Exporting...")
     }
 

@@ -15,45 +15,82 @@ struct DomainInfoView: View {
     @State private var renamingTagInfo: TagInfo? = nil
     @State private var newTagName: String = ""
     @FocusState private var focusedTagId: Int64?
-    
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             DomainHeader
             Divider()
             LeadsUsageBars
-            Divider()
-            FooterButtons
+//            Divider()
+//            FooterButtons
         }
     }
 
     private var DomainHeader: some View {
-        HStack {
-            Text(domain.name)
-                .font(.title)
-                .fontWeight(.semibold)
+        HStack(alignment: .center) {
+            HeaderDomainName
             Spacer()
-
-            Button(action: {
-                mode = .exportLeads
-            }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.down.document")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 25, height: 25)
-                    Text("Export")
-                        .font(.title3)
-                }
-                .padding(.vertical, 4)
-                .padding(.horizontal, 6)
-                .background(.blue.opacity(0.3))
-                .foregroundColor(.white)
-                .cornerRadius(8)
-                .shadow(radius: 2)
+            Group {
+                ExportButton
+                BulkActionMenu
             }
+            .font(.title3)
+            
+            .background(Color.gray.opacity(0.3))
+            .cornerRadius(8)
+            .shadow(radius: 2)
             .buttonStyle(PlainButtonStyle())
+            
+            
         }
+    }
+
+    private var HeaderDomainName: some View {
+        Text(domain.name)
+            .font(.title)
+            .fontWeight(.semibold)
+    }
+
+    private var ExportButton: some View {
+        Button(action: { mode = .exportLeads }) {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.down.document")
+                    .foregroundColor(.yellow.opacity(1))
+                Text("Export")
+            }
+            .padding(7)
+            .contentShape(Rectangle())        // ensures full tap area
+
+        }
+        
+    }
+
+    private var BulkActionMenu: some View {
+        Menu {
+            Group {
+                menuButton("Bulk Import", icon: "person.2.badge.plus.fill", tint: .green, action: {
+                    mode = .importLeads
+                })
+
+                menuButton("Bulk Exclude", icon: "person.2.slash.fill", action: {
+                    ToastManager.shared.show(style: .warning, message: "Bulk Exclude not implemented yet")
+
+                })
+
+                menuButton("Bulk Download", icon: "arrow.down.square", action: {
+                    ToastManager.shared.show(style: .warning, message: "Bulk dwoload not implemented yet")
+
+                })
+            }
+            .labelStyle(.titleAndIcon)
+        } label: {
+            HStack{
+                Image(systemName: "person.2.fill")
+                    .padding(8)
+            }
+            .contentShape(Rectangle())
+        }
+        .menuIndicator(.hidden)
     }
 
     private var LeadsUsageBars: some View {
@@ -71,13 +108,12 @@ struct DomainInfoView: View {
             }
             .padding(.horizontal, 4)
         }
-        .clipped(antialiased: false)
     }
 
     func performRename() {
         guard !newTagName.isEmpty, newTagName != renamingTagInfo!.name else {
-            withAnimation { renamingTagInfo = nil
-                focusedTagId = nil}
+            renamingTagInfo = nil
+            focusedTagId = nil
             return
         }
 
@@ -91,8 +127,9 @@ struct DomainInfoView: View {
 
         // Show confirmation toast
         ToastManager.shared.show(style: .success, message: "Tag renamed to '\(newTagName)'")
-        withAnimation { renamingTagInfo = nil
-            focusedTagId = nil}
+        
+        renamingTagInfo = nil
+        focusedTagId = nil
         newTagName = ""
     }
 
@@ -110,19 +147,17 @@ struct DomainInfoView: View {
                     TextField(
                         "New Tag Name",
                         text: $newTagName,
-                        onCommit: performRename,
+                        onCommit: performRename
                     )
-                        .textFieldStyle(.roundedBorder)
-                        .font(.body)
-                        .padding(.horizontal, 4)
-                        .onAppear {
-                            newTagName = tagInfo.name // Pre-fill with current name
-                        }
-                        .focused($focusedTagId, equals: tagInfo.id)
+                    .textFieldStyle(.roundedBorder)
+//                    .padding(.horizontal, 4)
+                    .onAppear {
+                        newTagName = tagInfo.name // Pre-fill with current name
+                    }
+                    .focused($focusedTagId, equals: tagInfo.id)
                 } else {
                     // Text when not renaming
                     Text(tagInfo.name)
-                        .font(.body)
                         .padding(.horizontal, 4)
                 }
 
@@ -153,8 +188,8 @@ struct DomainInfoView: View {
 
                         // Action to start the rename
                         menuButton("Rename", icon: "pencil", action: {
-                            withAnimation { renamingTagInfo = tagInfo
-                                focusedTagId = tagInfo.id}
+                            renamingTagInfo = tagInfo
+                            focusedTagId = tagInfo.id
                         })
 
                         menuButton("Delete", icon: "trash", role: .destructive, tint: .red, action: { // 👈 MODIFIED
@@ -165,13 +200,19 @@ struct DomainInfoView: View {
                     .labelStyle(.titleAndIcon)
                 } label: {
                     Image(systemName: "tag")
+                        .padding(4)
+//                        .font(.body)
+//                        .background(Color.gray.opacity(0.3))
+                        .cornerRadius(8)
+                        .shadow(radius: 2)
 //                        .rotationEffect(.degrees(90))
-                        .foregroundColor(.gray)
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
+//                        .foregroundColor(.gray)
+
+//                        .frame(width: 24, height: 24)
+//                        .contentShape(Rectangle())
                 }
                 .menuIndicator(.hidden)
-                .buttonStyle(.plain)
+                .buttonStyle(PlainButtonStyle())
             }
 
             ProgressBar(active: tagInfo.activeEmailsCount, total: domain.maxLeads)
@@ -185,7 +226,7 @@ struct DomainInfoView: View {
     /// Creates a button for use inside a Menu
     private func menuButton(_ title: String, icon: String, role: ButtonRole? = nil, tint: Color? = nil, action: @escaping () -> Void) -> some View {
         Button(role: role, action: action) {
-            Label(title, systemImage: icon)
+            Label(title, systemImage: icon).font(.body)
         }
         .tint(tint)
     }
