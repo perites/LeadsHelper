@@ -5,7 +5,9 @@
 //  Created by Mykyta Krementar on 20/10/2025.
 //
 
+import Foundation
 import SwiftUI
+import TabularData
 
 class ImportViewModel: ObservableObject {
     @Published var emailsFromFiles: [String]? = []
@@ -25,25 +27,18 @@ class ImportViewModel: ObservableObject {
     enum ImportResult {
         case loading
         case failure
-        case success(Int)
+        case success
     }
 
     func importLeads(
         importName: String,
-        tagName: String,
+        tagId: Int64,
         domainId: Int64
     ) async -> ImportResult {
         let start = Date()
         guard let emails = emailsAll else {
             return .loading
         }
-        
-        let tagId = getTagId(tagName: tagName, domainId: domainId)
-        
-//        let activeLeadsCountBeforeImport = LeadsTable.countLeads(
-//            with: tagId,
-//            isActive: true
-//        )
         
         var newType = 0
         if let files = emailsFromFiles, let text = emailsFromText {
@@ -68,48 +63,11 @@ class ImportViewModel: ObservableObject {
             newTagId: tagId
         )
         
-//        let activeLeadsCountAfterImport = LeadsTable.countLeads(
-//            with: tagId,
-//            isActive: true
-//        )
-        
         let timeElapsed = Date().timeIntervalSince(start)
         print("Import took \(timeElapsed) seconds. Type : \(newType)")
-        return .success(0)
-//        return .success(activeLeadsCountAfterImport - activeLeadsCountBeforeImport)
+        return .success
     }
-    
-    func getTagId(tagName: String, domainId: Int64) -> Int64 {
-        var tagId: Int64?
-        
-        tagId = TagsTable.findByName(name: tagName, domainId: domainId)
-        if tagId == nil {
-            tagId = TagsTable.addTag(
-                newName: tagName,
-                newDomainId: domainId
-            )!
-        }
-        return tagId!
-    }
-    
-    func getEmailsFromString(_ input: String) -> [String] {
-        let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
-                
-        guard let regex = try? NSRegularExpression(pattern: emailRegex, options: []) else {
-            return []
-        }
-                
-        let range = NSRange(location: 0, length: input.utf16.count)
-                
-        let matches = regex.matches(in: input, options: [], range: range)
-                
-        let emails = Array(Set(matches.compactMap {
-            Range($0.range, in: input).map { String(input[$0]) }
-        }))
-                
-        return emails
-    }
-        
+   
     enum LeadSource {
         case files([URL])
         case text(String)
@@ -135,25 +93,65 @@ class ImportViewModel: ObservableObject {
     }
     
     private func getLeadsFromFiles(urls: [URL]) async {
-        var combined = ""
+        var allEmails: [String] = []
+        
         for url in urls {
             guard url.startAccessingSecurityScopedResource() else { continue }
             defer { url.stopAccessingSecurityScopedResource() }
-            combined += (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            
+            let options = CSVReadingOptions(
+                hasHeaderRow: true,
+                delimiter: ","
+            )
+            let dataFrame = try? DataFrame(contentsOfCSVFile: url, options: options)
+            guard let dataFrame else { continue }
+            
+            let emailsFromFile = extractValidEmails(from: dataFrame)
+            allEmails.append(contentsOf: emailsFromFile ?? [])
         }
-        let emails = getEmailsFromString(combined)
+        
+        let uniqueEmails = Array(Set(allEmails))
+        
         guard !Task.isCancelled else { return }
         await MainActor.run {
-            emailsFromFiles = emails
+            emailsFromFiles = uniqueEmails
         }
     }
     
     private func getLeadsFromText(text: String) async {
-        let emails = getEmailsFromString(text)
+        guard let csvData = text.data(using: .utf8) else { return }
+        let dataFrame = try? DataFrame(csvData: csvData)
+        guard let dataFrame else { return }
+        let emails = extractValidEmails(from: dataFrame)
         
         guard !Task.isCancelled else { return }
         await MainActor.run {
-            emailsFromText = emails
+            emailsFromText = Array(emails ?? [])
         }
+    }
+    
+    func extractValidEmails(from dataFrame: DataFrame) -> Set<String>? {
+        guard let emailColumn = dataFrame.columns.first(where: {
+            $0.name
+                .lowercased()
+                .trimmingCharacters(in: .whitespaces)
+                .contains("email")
+        }) else {
+//                throw EmailParseError.noEmailColumnFound
+            return []
+        }
+      
+        let emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+        
+        let emailColumnValues = dataFrame[emailColumn.name, String.self]
+
+        let validEmails = Set(
+            emailColumnValues
+                .compactMap { $0 }
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { $0.wholeMatch(of: emailRegex) != nil }
+        )
+        
+        return validEmails
     }
 }

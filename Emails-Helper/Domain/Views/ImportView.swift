@@ -14,7 +14,7 @@ struct DomainImportView: View {
     @StateObject var viewModel: ImportViewModel = .init()
     
     @State var importName: String = ""
-    @State var tagName: String = ""
+    @State var pickedTagId: Int64
     
     @State var isImporting: Bool = false
     
@@ -47,23 +47,43 @@ struct DomainImportView: View {
         
     private var ImportNameInputView: some View {
         HStack {
-            Text("Import Name:")
+            Text("Import Name:").font(.title3)
             TextField("Enter Import Name", text: $importName)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
             
-        }.font(.title3)
+            
+        }
     }
+    
+//    private var TagNameInputView: some View {
+//        HStack {
+//            Text("Tag Name:")
+//            SearchBarWithSuggestions(
+//                query: $tagName,
+//                allItems: domain.tagsInfo.map { $0.name }
+//            ).textFieldStyle(RoundedBorderTextFieldStyle())
+//            
+//        }.font(.title3)
+//    }
     
     private var TagNameInputView: some View {
         HStack {
-            Text("Tag Name:")
-            SearchBarWithSuggestions(
-                query: $tagName,
-                allItems: domain.tagsInfo.map { $0.name }
-            ).textFieldStyle(RoundedBorderTextFieldStyle())
+
+            Picker("Select Tag:", selection: $pickedTagId) {
+                ForEach(domain.tagsInfo) { tag in
+                    Text(tag.name).tag(tag.id)
+                }
+            }
+            .pickerStyle(MenuPickerStyle()) // Makes it a dropdown menu
+            .frame(maxWidth: 300)
             
-        }.font(.title3)
+            
+//            .background(Color(.systemGray))
+            .cornerRadius(8)
+        }
+        .font(.title3)
     }
+
     
     private var ImportButton: some View {
         Button(
@@ -73,7 +93,7 @@ struct DomainImportView: View {
                     
                     let result = await viewModel.importLeads(
                         importName: importName,
-                        tagName: tagName,
+                        tagId: pickedTagId,
                         domainId: domain.id
                     )
                     
@@ -84,12 +104,25 @@ struct DomainImportView: View {
                         ToastManager.shared.show(style: .warning, message: "Wait for Leads to load")
                     case .failure:
                         ToastManager.shared.show(style: .error, message: "Error while importing leads")
-                    case .success(let count):
+                    case .success:
+                        
+                        let leadsBefore = domain.tagsInfo.filter {
+                            $0.id == pickedTagId
+                        }.first?.availableLeadsCount ?? 0
+                        
                         domain.getTagsInfo()
+                        
+                        let leadsAfter = domain.tagsInfo.filter {
+                            $0.id == pickedTagId
+                        }.first?.availableLeadsCount ?? 0
+                        
+                        let importCount = leadsAfter - leadsBefore
+                        
+                        
                         ToastManager.shared
                             .show(
-                                style: count > 0 ? .success : .warning,
-                                message: "Import Complete:\n\(count) leads imported"
+                                style: importCount > 0 ? .success : .warning,
+                                message: "Import Complete:\n\(importCount) leads added"
                             )
                         mode = .info
                     }

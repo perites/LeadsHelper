@@ -34,7 +34,6 @@ class DatabaseManager {
                 print(row[TagsTable.name])
             }
 
-
 //            for row in try db.prepare("SELECT email, lastUsedAt, typeof(lastUsedAt) FROM leads") {
 //                print(row)
 //            }
@@ -73,7 +72,7 @@ enum TagsTable {
     static let domainId = SQLite.Expression<Int64>("domainId")
     static let isActive = SQLite.Expression<Bool>("isActive")
     static let idealAmount = SQLite.Expression<Int>("idealAmount")
-    
+
     static func createTable(in db: Connection?) {
         guard let db else { return }
         do {
@@ -84,7 +83,7 @@ enum TagsTable {
                     t.column(domainId)
                     t.column(isActive)
                     t.column(idealAmount)
-                    
+
                     t.foreignKey(
                         domainId,
                         references: DomainsTable.table,
@@ -119,21 +118,6 @@ enum TagsTable {
         }
     }
 
-    
-    static func findByName(name: String, domainId: Int64) -> Int64? {
-        guard let db = DatabaseManager.shared.db else { return nil }
-
-        do {
-            let query = table.filter((self.name == name) && (self.domainId == domainId))
-            let tag = try db.pluck(query)
-
-            return tag?[id]
-        } catch {
-            print("Error fetching domain by ID: \(error)")
-            return nil
-        }
-    }
-    
     static func editTag(id: Int64, newName: String, newIdealAmount: Int) {
         guard let db = DatabaseManager.shared.db else { return }
         let tag = table.filter(self.id == id)
@@ -144,7 +128,7 @@ enum TagsTable {
             print("Failed to rename tag \(id): \(error)")
         }
     }
-    
+
     static func deleteTag(id: Int64) {
         guard let db = DatabaseManager.shared.db else { return }
         let tag = table.filter(self.id == id)
@@ -195,7 +179,7 @@ enum ImportsTable {
                 name <- newName,
                 dateCreated <- Date(),
                 type <- newType,
-                tagId <- newTagId,
+                tagId <- newTagId
             )
 
             if let rowId = try DatabaseManager.shared.db?.run(insert) {
@@ -272,7 +256,7 @@ enum LeadsTable {
                     let sql = """
                         INSERT INTO leads (email, tagId, importId, isActive, randomOrder)
                         VALUES (?, ?, ?, 1, ?)
-                        ON CONFLICT(email, tagId) DO UPDATE SET isActive = 1, importId = excluded.importId;
+                        ON CONFLICT(email, tagId) DO UPDATE SET isActive = 1, importId = excluded.importId, randomOrder = excluded.randomOrder;
                     """
                     try db.run(sql, [newEmail, newTagId, newImportId, Double.random(in: 0 ..< 1)])
                 }
@@ -283,11 +267,11 @@ enum LeadsTable {
         }
     }
 
-    static func countAllLeads(with tagId: Int64, active:Bool) -> Int {
+    static func countAllLeads(with tagId: Int64, active: Bool) -> Int {
         guard let db = DatabaseManager.shared.db else { return 0 }
 
-        let query = table.filter((self.tagId == tagId) && (self.isActive == active))
-        
+        let query = table.filter((self.tagId == tagId) && (isActive == active))
+
         do {
             let count = try db.scalar(query.count)
             return count
@@ -296,8 +280,7 @@ enum LeadsTable {
             return 0
         }
     }
-    
-    
+
     static func countAvailableLeads(
         with tagId: Int64,
         domainId: Int64,
@@ -306,7 +289,6 @@ enum LeadsTable {
     ) -> Int {
         guard let db = DatabaseManager.shared.db else { return 0 }
 
-        // 1. Compute cutoff dates
         let domainCutoffDate = Calendar.current.date(byAdding: .day, value: -domainUseLimit, to: Date()) ?? Date.distantPast
         let globalCutoffDate = Calendar.current.date(byAdding: .day, value: -globalUseLimit, to: Date()) ?? Date.distantPast
 
@@ -339,14 +321,13 @@ enum LeadsTable {
         """
 
         do {
-            // The parameters are bound in the order of the '?' placeholders in the SQL
             let parameters: [Binding] = [
-                domainId, // for t.domainId = ? in domainRecent CTE
-                tagId,    // for L.tagId = ? in main WHERE clause
-                globalCutoffString, // for G.globalLastUsed < ?
-                domainCutoffString  // for D.domainLastUsed < ?
+                domainId,
+                tagId,
+                globalCutoffString,
+                domainCutoffString
             ]
-            
+
             let availableCount = try db.scalar(sql, parameters)
 
             if let result = availableCount as? Int64 {
@@ -359,13 +340,7 @@ enum LeadsTable {
             return 0
         }
     }
-    
-    
-    
-    
-    
-    
-    
+
     static func getEmails(
         with tagId: Int64,
         domainId: Int64,
@@ -375,7 +350,6 @@ enum LeadsTable {
     ) -> [String] {
         guard let db = DatabaseManager.shared.db else { return [] }
 
-        // Compute cutoff dates
         let domainCutoffDate = Calendar.current.date(byAdding: .day, value: -domainUseLimit, to: Date()) ?? Date.distantPast
         let globalCutoffDate = Calendar.current.date(byAdding: .day, value: -globalUseLimit, to: Date()) ?? Date.distantPast
 
@@ -383,68 +357,64 @@ enum LeadsTable {
         let domainCutoffString = dateFormatter.string(from: domainCutoffDate)
         let globalCutoffString = dateFormatter.string(from: globalCutoffDate)
 
-        let sql = """
-        WITH globalRecent AS (
-            SELECT email, MAX(lastUsedAt) AS globalLastUsed
-            FROM leads
-            GROUP BY email
-        ),
-        domainRecent AS (
-            SELECT l.email, MAX(l.lastUsedAt) AS domainLastUsed
-            FROM leads l
-            JOIN tags t ON l.tagId = t.id
-            WHERE t.domainId = ?
-            GROUP BY l.email
+        let combinedSQL = """
+        UPDATE leads
+        SET isActive = 0,
+            lastUsedAt = CURRENT_TIMESTAMP
+        WHERE id IN (
+            WITH globalRecent AS (
+                SELECT email, MAX(lastUsedAt) AS globalLastUsed
+                FROM leads
+                GROUP BY email
+            ),
+            domainRecent AS (
+                SELECT l.email, MAX(l.lastUsedAt) AS domainLastUsed
+                FROM leads l
+                JOIN tags t ON l.tagId = t.id
+                WHERE t.domainId = ?
+                GROUP BY l.email
+            )
+            SELECT L.id
+            FROM leads L
+            JOIN tags T ON L.tagId = T.id
+            LEFT JOIN globalRecent G ON L.email = G.email
+            LEFT JOIN domainRecent D ON L.email = D.email
+            WHERE L.tagId = ?
+              AND L.isActive = 1
+              AND (G.globalLastUsed < ? OR G.globalLastUsed IS NULL)
+              AND (D.domainLastUsed < ? OR D.domainLastUsed IS NULL)
+            ORDER BY L.randomOrder
+            LIMIT ?
         )
-        SELECT L.id, L.email
-        FROM leads L
-        JOIN tags T ON L.tagId = T.id
-        LEFT JOIN globalRecent G ON L.email = G.email
-        LEFT JOIN domainRecent D ON L.email = D.email
-        WHERE L.tagId = ?
-          AND L.isActive = 1
-          AND (G.globalLastUsed < ? OR G.globalLastUsed IS NULL)
-          AND (D.domainLastUsed < ? OR D.domainLastUsed IS NULL)
-        ORDER BY L.randomOrder
-        LIMIT ?;
+        RETURNING email;
         """
 
         var emails: [String] = []
-        var idsToDeactivate: [Int64] = []
 
         do {
-            try db.transaction {
-                // 1) Fetch leads to use
-                let stmt = try db.prepare(sql, domainId, tagId, globalCutoffString, domainCutoffString, amount)
+            let stmt = try db.prepare(
+                combinedSQL,
+                domainId,
+                tagId,
+                globalCutoffString,
+                domainCutoffString,
+                amount
+            )
 
-                for row in stmt {
-                    if let id = row[0] as? Int64,
-                       let email = row[1] as? String
-                    {
-                        idsToDeactivate.append(id)
-                        emails.append(email)
-                    }
+            for row in stmt {
+                if let email = row[0] as? String {
+                    emails.append(email)
                 }
+            }
 
-                // 2) Mark these leads as used
-                if !idsToDeactivate.isEmpty {
-                    let placeholders = idsToDeactivate.map { _ in "?" }.joined(separator: ",")
-                    let deactivateSQL = """
-                    UPDATE leads
-                    SET isActive = 0,
-                        lastUsedAt = CURRENT_TIMESTAMP
-                    WHERE id IN (\(placeholders));
-                    """
-
-                    try db.run(deactivateSQL, idsToDeactivate)
-                    print("🧹 Deactivated \(idsToDeactivate.count) leads")
-                }
+            if !emails.isEmpty {
+                print("🧹 Fetched and deactivated \(emails.count) leads in one step.")
             }
 
             return emails
 
         } catch {
-            print("❌ getEmails failed:", error)
+            print("❌ getEmails (combined query) failed:", error)
             return []
         }
     }

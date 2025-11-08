@@ -146,6 +146,7 @@ class DomainViewModel: ObservableObject, Identifiable {
     }
 
     func deleteTag(tagId: Int64) {
+        TagsTable.deleteTag(id: tagId)
         tagsInfo.removeAll { $0.id == tagId }
     }
     

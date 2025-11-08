@@ -8,10 +8,10 @@
 import AppKit
 import SwiftUI
 
-enum Mode: String {
+enum Mode {
     case edit
     case info
-    case importLeads
+    case importLeads(Int64)
     case exportLeads
     case deleted
 }
@@ -37,8 +37,12 @@ struct DomainDetailedView: View {
                         ),
                         mode: $mode
                     )
-                case .importLeads:
-                    DomainImportView(domain: domain, mode: $mode)
+                case .importLeads(let tagId):
+                    DomainImportView(
+                        domain: domain,
+                        mode: $mode,
+                        pickedTagId: tagId
+                    )
                 case .exportLeads:
                     DomainExportView(domain: domain, mode: $mode)
                 case .deleted:

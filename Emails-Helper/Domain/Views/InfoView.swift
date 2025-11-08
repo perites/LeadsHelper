@@ -15,6 +15,8 @@ struct DomainInfoView: View {
     @State private var editedTagInfo: TagInfo? = nil
     @State private var newTagName: String = ""
     @State private var newIdealAmount: Int = 0
+    @State private var isShowingDeleteAlert: Bool = false
+
     @FocusState private var focusedTagId: Int64?
 
     var body: some View {
@@ -65,7 +67,9 @@ struct DomainInfoView: View {
         Menu {
             Group {
                 menuButton("Bulk Import", icon: "person.2.badge.plus.fill", tint: .green, action: {
-                    mode = .importLeads
+//                    mode = .importLeads
+                    ToastManager.shared.show(style: .warning, message: "Bulk IMport not implemented yet")
+
                 })
 
                 menuButton("Bulk Exclude", icon: "person.2.slash.fill", action: {
@@ -172,7 +176,7 @@ struct DomainInfoView: View {
             Menu {
                 Group {
                     menuButton("Import", icon: "person.fill.badge.plus", tint: .green, action: {
-                        mode = .importLeads
+                        mode = .importLeads(tagInfo.id)
                     })
 
                     menuButton("Imports History", icon: "clock.arrow.circlepath", action: {
@@ -204,14 +208,7 @@ struct DomainInfoView: View {
                         role: .destructive,
                         tint: .red,
                         action: {
-                            TagsTable.deleteTag(id: tagInfo.id)
-                            domain.deleteTag(tagId: tagInfo.id)
-
-                            ToastManager.shared
-                                .show(
-                                    style: .info,
-                                    message: "Tag \(tagInfo.name) deleted"
-                                )
+                            isShowingDeleteAlert = true
                         }
                     )
                 }
@@ -224,6 +221,19 @@ struct DomainInfoView: View {
             }
             .menuIndicator(.hidden)
             .buttonStyle(PlainButtonStyle())
+        }.alert("Delete Tag?", isPresented: $isShowingDeleteAlert) {
+            Button("Delete", role: .none) {
+                domain.deleteTag(tagId: tagInfo.id)
+
+                ToastManager.shared
+                    .show(
+                        style: .info,
+                        message: "Tag \(tagInfo.name) deleted"
+                    )
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Are you sure you want to delete tag \(tagInfo.name)?")
         }
 
         ProgressBar(tagInfo: tagInfo)
@@ -272,34 +282,6 @@ struct DomainInfoView: View {
             Label(title, systemImage: icon).font(.body)
         }
         .tint(tint)
-    }
-
-    private var FooterButtons: some View {
-        HStack {
-            ActionButton(
-                title: "Import",
-                systemImage: "person.fill.badge.plus",
-                color: .green.opacity(0.3)
-            ) {
-                mode = .importLeads
-            }
-            Spacer()
-            ActionButton(
-                title: "Exclude",
-                systemImage: "person.fill.badge.minus",
-                color: .yellow.opacity(0.3)
-            ) {
-                mode = .exportLeads
-            }
-            Spacer()
-            ActionButton(
-                title: "Delete",
-                systemImage: "person.slash.fill",
-                color: .red.opacity(0.3)
-            ) {
-                mode = .exportLeads
-            }
-        }
     }
 
     private struct ProgressBar: View {
