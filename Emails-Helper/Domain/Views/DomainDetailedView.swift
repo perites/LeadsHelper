@@ -14,6 +14,7 @@ enum Mode {
     case importLeads(Int64)
     case exportLeads
     case deleted
+    case bulkImport
 }
 
 struct DomainDetailedView: View {
@@ -47,6 +48,9 @@ struct DomainDetailedView: View {
                     DomainExportView(domain: domain, mode: $mode)
                 case .deleted:
                     DomainDeletedView()
+                    
+                case .bulkImport:
+                    DomainBulkImportView(domain:domain, mode:$mode)
                 }
             }
         }

@@ -42,7 +42,7 @@ struct DomainImportView: View {
             }
             .padding(.top, 10)
         }
-            .loadingOverlay(isShowing: $isImporting, text: "Importing...")
+        .loadingOverlay(isShowing: $isImporting, text: "Importing...")
     }
         
     private var ImportNameInputView: some View {
@@ -50,51 +50,43 @@ struct DomainImportView: View {
             Text("Import Name:").font(.title3)
             TextField("Enter Import Name", text: $importName)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
-            
-            
         }
     }
-    
-//    private var TagNameInputView: some View {
-//        HStack {
-//            Text("Tag Name:")
-//            SearchBarWithSuggestions(
-//                query: $tagName,
-//                allItems: domain.tagsInfo.map { $0.name }
-//            ).textFieldStyle(RoundedBorderTextFieldStyle())
-//            
-//        }.font(.title3)
-//    }
-    
+        
     private var TagNameInputView: some View {
         HStack {
-
             Picker("Select Tag:", selection: $pickedTagId) {
                 ForEach(domain.tagsInfo) { tag in
                     Text(tag.name).tag(tag.id)
                 }
             }
-            .pickerStyle(MenuPickerStyle()) // Makes it a dropdown menu
+            .pickerStyle(MenuPickerStyle())
             .frame(maxWidth: 300)
-            
-            
-//            .background(Color(.systemGray))
             .cornerRadius(8)
         }
         .font(.title3)
     }
 
-    
     private var ImportButton: some View {
         Button(
             action: {
                 Task { @MainActor in
                     isImporting = true
                     
+                    guard !importName.isEmpty else {
+                        ToastManager.shared
+                            .show(
+                                style: .warning,
+                                message: "Import Name is required"
+                            )
+                        isImporting = false
+                        return
+                    }
+                    
+                    
                     let result = await viewModel.importLeads(
                         importName: importName,
-                        tagId: pickedTagId,
-                        domainId: domain.id
+                        tagId: pickedTagId
                     )
                     
                     isImporting = false
@@ -105,7 +97,6 @@ struct DomainImportView: View {
                     case .failure:
                         ToastManager.shared.show(style: .error, message: "Error while importing leads")
                     case .success:
-                        
                         let leadsBefore = domain.tagsInfo.filter {
                             $0.id == pickedTagId
                         }.first?.availableLeadsCount ?? 0
@@ -117,7 +108,6 @@ struct DomainImportView: View {
                         }.first?.availableLeadsCount ?? 0
                         
                         let importCount = leadsAfter - leadsBefore
-                        
                         
                         ToastManager.shared
                             .show(
@@ -131,12 +121,10 @@ struct DomainImportView: View {
             }) {
                 HStack(spacing: 8) {
                     Image(systemName: "person.fill.badge.plus")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 25, height: 25)
                     Text("Finish Import")
-                        .font(.title2)
+                        
                 }
+                .font(.title2)
                 .padding(.vertical, 4)
                 .padding(.horizontal, 6)
                 .background(.green.opacity(0.3))

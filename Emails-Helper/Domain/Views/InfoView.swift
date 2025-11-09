@@ -44,13 +44,45 @@ struct DomainInfoView: View {
             .buttonStyle(PlainButtonStyle())
         }
     }
-
+    
+    
+    
     private var HeaderDomainName: some View {
-        Text(domain.name)
-            .font(.title)
-            .fontWeight(.semibold)
+        HStack(spacing: 10) {
+            Text(domain.name)
+                .font(.title)
+                .fontWeight(.semibold)
+
+            if domain.fetchTagsTask != nil {
+//                ProgressView()
+//                    .scaleEffect(0.6)
+//                    .padding(.leading, 2)
+                PulsingDot()
+            } else {
+                Image(systemName: "checkmark.rectangle.stack")
+            }
+        }
     }
 
+    struct PulsingDot: View {
+        @State private var scale: CGFloat = 0.7
+        
+        var body: some View {
+            Circle()
+                .frame(width: 10, height: 10)
+                .scaleEffect(scale)
+                .animation(
+                    .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
+                    value: scale
+                )
+                .onAppear {
+                    scale = 1
+                }
+        }
+    }
+
+    
+    
     private var ExportButton: some View {
         Button(action: { mode = .exportLeads }) {
             HStack(spacing: 4) {
@@ -67,9 +99,7 @@ struct DomainInfoView: View {
         Menu {
             Group {
                 menuButton("Bulk Import", icon: "person.2.badge.plus.fill", tint: .green, action: {
-//                    mode = .importLeads
-                    ToastManager.shared.show(style: .warning, message: "Bulk IMport not implemented yet")
-
+                    mode = .bulkImport
                 })
 
                 menuButton("Bulk Exclude", icon: "person.2.slash.fill", action: {

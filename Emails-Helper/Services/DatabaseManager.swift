@@ -266,30 +266,19 @@ enum LeadsTable {
             print("Failed to add leads: \(error)")
         }
     }
-
-    static func countAllLeads(with tagId: Int64, active: Bool) -> Int {
-        guard let db = DatabaseManager.shared.db else { return 0 }
-
-        let query = table.filter((self.tagId == tagId) && (isActive == active))
-
-        do {
-            let count = try db.scalar(query.count)
-            return count
-        } catch {
-            print("Failed count leads with tag \(tagId): \(error)")
-            return 0
-        }
-    }
-
-    static func countAvailableLeads(
-        with tagId: Int64,
+    
+    
+    
+    
+    static func fetchTagsInfoData(
         domainId: Int64,
-        domainUseLimit: Int,
+        useLimit: Int,
         globalUseLimit: Int
-    ) -> Int {
-        guard let db = DatabaseManager.shared.db else { return 0 }
+    ) -> [TagInfo] {
+        
+        guard let db = DatabaseManager.shared.db else { return [] }
 
-        let domainCutoffDate = Calendar.current.date(byAdding: .day, value: -domainUseLimit, to: Date()) ?? Date.distantPast
+        let domainCutoffDate = Calendar.current.date(byAdding: .day, value: -useLimit, to: Date()) ?? Date.distantPast
         let globalCutoffDate = Calendar.current.date(byAdding: .day, value: -globalUseLimit, to: Date()) ?? Date.distantPast
 
         let dateFormatter = ISO8601DateFormatter()
@@ -306,40 +295,142 @@ enum LeadsTable {
             SELECT l.email, MAX(l.lastUsedAt) AS domainLastUsed
             FROM leads l
             JOIN tags t ON l.tagId = t.id
-            WHERE t.domainId = ?
+            WHERE t.domainId = ? 
             GROUP BY l.email
         )
-        SELECT COUNT(L.id)
-        FROM leads L
-        JOIN tags T ON L.tagId = T.id
+        SELECT
+            T.id,
+            T.name,
+            T.idealAmount,
+            
+            SUM(CASE WHEN L.isActive = 0 THEN 1 ELSE 0 END) AS inactiveCount,
+            
+            SUM(CASE WHEN L.isActive = 1 THEN 1 ELSE 0 END) AS activeCount,
+            
+            SUM(CASE
+                WHEN L.isActive = 1
+                 AND (G.globalLastUsed < ? OR G.globalLastUsed IS NULL) 
+                 AND (D.domainLastUsed < ? OR D.domainLastUsed IS NULL)
+                THEN 1
+                ELSE 0
+            END) AS availableCount
+            
+        FROM tags T
+        LEFT JOIN leads L ON T.id = L.tagId
         LEFT JOIN globalRecent G ON L.email = G.email
         LEFT JOIN domainRecent D ON L.email = D.email
-        WHERE L.tagId = ?
-          AND L.isActive = 1
-          AND (G.globalLastUsed < ? OR G.globalLastUsed IS NULL)
-          AND (D.domainLastUsed < ? OR D.domainLastUsed IS NULL);
+        
+        WHERE T.domainId = ?
+        
+        GROUP BY T.id, T.name, T.idealAmount
+        ORDER BY T.name;
         """
 
+        var results: [TagInfo] = []
+        
         do {
             let parameters: [Binding] = [
                 domainId,
-                tagId,
                 globalCutoffString,
-                domainCutoffString
+                domainCutoffString,
+                domainId
             ]
-
-            let availableCount = try db.scalar(sql, parameters)
-
-            if let result = availableCount as? Int64 {
-                return Int(result)
-            } else {
-                return 0
+            
+            for row in try db.prepare(sql, parameters) {
+                
+                let info = TagInfo(
+                    id: row[0] as? Int64 ?? 0,
+                    name: row[1] as? String ?? "Unknown",
+                    idealAmount: Int(row[2] as? Int64 ?? 0),
+                    inactiveLeadsCount: Int((row[3] as? Int64) ?? 0),
+                    activeLeadsCount: Int((row[4] as? Int64) ?? 0),
+                    availableLeadsCount: Int((row[5] as? Int64) ?? 0)
+                )
+                results.append(info)
             }
+            
         } catch {
-            print("❌ countAvailableLeads failed for tagId \(tagId): \(error)")
-            return 0
+            print("❌ fetchTagsInfoData failed: \(error)")
         }
+        
+        return results
     }
+    
+    
+    
+//    static func countAllLeads(with tagId: Int64, active: Bool) -> Int {
+//        guard let db = DatabaseManager.shared.db else { return 0 }
+//
+//        let query = table.filter((self.tagId == tagId) && (isActive == active))
+//
+//        do {
+//            let count = try db.scalar(query.count)
+//            return count
+//        } catch {
+//            print("Failed count leads with tag \(tagId): \(error)")
+//            return 0
+//        }
+//    }
+//
+//    static func countAvailableLeads(
+//        with tagId: Int64,
+//        domainId: Int64,
+//        domainUseLimit: Int,
+//        globalUseLimit: Int
+//    ) -> Int {
+//        guard let db = DatabaseManager.shared.db else { return 0 }
+//
+//        let domainCutoffDate = Calendar.current.date(byAdding: .day, value: -domainUseLimit, to: Date()) ?? Date.distantPast
+//        let globalCutoffDate = Calendar.current.date(byAdding: .day, value: -globalUseLimit, to: Date()) ?? Date.distantPast
+//
+//        let dateFormatter = ISO8601DateFormatter()
+//        let domainCutoffString = dateFormatter.string(from: domainCutoffDate)
+//        let globalCutoffString = dateFormatter.string(from: globalCutoffDate)
+//
+//        let sql = """
+//        WITH globalRecent AS (
+//            SELECT email, MAX(lastUsedAt) AS globalLastUsed
+//            FROM leads
+//            GROUP BY email
+//        ),
+//        domainRecent AS (
+//            SELECT l.email, MAX(l.lastUsedAt) AS domainLastUsed
+//            FROM leads l
+//            JOIN tags t ON l.tagId = t.id
+//            WHERE t.domainId = ?
+//            GROUP BY l.email
+//        )
+//        SELECT COUNT(L.id)
+//        FROM leads L
+//        JOIN tags T ON L.tagId = T.id
+//        LEFT JOIN globalRecent G ON L.email = G.email
+//        LEFT JOIN domainRecent D ON L.email = D.email
+//        WHERE L.tagId = ?
+//          AND L.isActive = 1
+//          AND (G.globalLastUsed < ? OR G.globalLastUsed IS NULL)
+//          AND (D.domainLastUsed < ? OR D.domainLastUsed IS NULL);
+//        """
+//
+//        do {
+//            let parameters: [Binding] = [
+//                domainId,
+//                tagId,
+//                globalCutoffString,
+//                domainCutoffString
+//            ]
+//
+//            let availableCount = try db.scalar(sql, parameters)
+//
+//            if let result = availableCount as? Int64 {
+//                return Int(result)
+//            } else {
+//                return 0
+//            }
+//        } catch {
+//            print("❌ countAvailableLeads failed for tagId \(tagId): \(error)")
+//            return 0
+//        }
+//    }
 
     static func getEmails(
         with tagId: Int64,

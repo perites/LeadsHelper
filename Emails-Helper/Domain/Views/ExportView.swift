@@ -12,7 +12,6 @@ struct DomainExportView: View {
 
     @Binding var mode: Mode
 
-    
     @State private var isExporting: Bool = false
 
     init(domain: DomainViewModel, mode: Binding<Mode>) {
@@ -58,7 +57,7 @@ struct DomainExportView: View {
             }
             .padding(.top, 10)
         }
-            .loadingOverlay(isShowing: $isExporting, text: "Exporting...")
+        .loadingOverlay(isShowing: $isExporting, text: "Exporting...")
     }
 
     private var HeaderView: some View {
@@ -76,12 +75,10 @@ struct DomainExportView: View {
             if viewModel.isSeparateFiles {
                 Text("Folder Name:")
                     .font(.body)
-                SearchBarWithSuggestions(
-                    query: $viewModel.folderName,
-                    allItems: Array(viewModel.allMergeTags)
-                )
-                .font(.body)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
+
+                TextField("Folder name", text: $viewModel.folderName)
+                    .font(.body)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
                 Spacer()
 
             } else {
@@ -90,10 +87,9 @@ struct DomainExportView: View {
 
             Text("File Name:")
                 .font(.body)
-            SearchBarWithSuggestions(
-                query: $viewModel.fileName,
-                allItems: Array(viewModel.allMergeTags)
-            ).font(.body)
+
+            TextField("File name", text: $viewModel.fileName)
+                .font(.body)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
         }
     }
@@ -159,8 +155,6 @@ struct DomainExportView: View {
                     isExporting = true
 
                     let result = await viewModel.exportLeads()
-                       
-                    
 
                     isExporting = false
 

@@ -120,7 +120,10 @@ struct DomainSettingsView: View {
     private var SaveButton: some View {
         Button(
             action: {
-                domain.copyUpdates(from: editableDomain)
+                let limitChanged = domain.copyUpdates(from: editableDomain)
+                if limitChanged  {
+                    domain.getTagsInfo()
+                }
                 ToastManager.shared.show(style: .info, message: "Domain \(domain.name) updated")
                 mode = .info
 

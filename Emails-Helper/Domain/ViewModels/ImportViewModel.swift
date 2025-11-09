@@ -33,7 +33,6 @@ class ImportViewModel: ObservableObject {
     func importLeads(
         importName: String,
         tagId: Int64,
-        domainId: Int64
     ) async -> ImportResult {
         let start = Date()
         guard let emails = emailsAll else {
@@ -96,17 +95,10 @@ class ImportViewModel: ObservableObject {
         var allEmails: [String] = []
         
         for url in urls {
-            guard url.startAccessingSecurityScopedResource() else { continue }
-            defer { url.stopAccessingSecurityScopedResource() }
             
-            let options = CSVReadingOptions(
-                hasHeaderRow: true,
-                delimiter: ","
-            )
-            let dataFrame = try? DataFrame(contentsOfCSVFile: url, options: options)
-            guard let dataFrame else { continue }
+            guard let dataFrame = Self.getDataFrameFrom(url: url) else { continue }
             
-            let emailsFromFile = extractValidEmails(from: dataFrame)
+            let emailsFromFile = Self.extractValidEmails(from: dataFrame)
             allEmails.append(contentsOf: emailsFromFile ?? [])
         }
         
@@ -122,7 +114,7 @@ class ImportViewModel: ObservableObject {
         guard let csvData = text.data(using: .utf8) else { return }
         let dataFrame = try? DataFrame(csvData: csvData)
         guard let dataFrame else { return }
-        let emails = extractValidEmails(from: dataFrame)
+        let emails = Self.extractValidEmails(from: dataFrame)
         
         guard !Task.isCancelled else { return }
         await MainActor.run {
@@ -130,7 +122,21 @@ class ImportViewModel: ObservableObject {
         }
     }
     
-    func extractValidEmails(from dataFrame: DataFrame) -> Set<String>? {
+    static func getDataFrameFrom(url:URL) -> DataFrame? {
+        guard url.startAccessingSecurityScopedResource() else { return nil}
+        defer { url.stopAccessingSecurityScopedResource() }
+        
+        let options = CSVReadingOptions(
+            hasHeaderRow: true,
+            delimiter: ","
+        )
+        let dataFrame = try? DataFrame(contentsOfCSVFile: url, options: options)
+        
+        return dataFrame
+        
+    }
+    
+    static func extractValidEmails(from dataFrame: DataFrame) -> Set<String>? {
         guard let emailColumn = dataFrame.columns.first(where: {
             $0.name
                 .lowercased()
