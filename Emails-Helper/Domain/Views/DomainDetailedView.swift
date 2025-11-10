@@ -15,6 +15,7 @@ enum Mode {
     case exportLeads
     case deleted
     case bulkImport
+    case download(Bool, Int64?)
 }
 
 struct DomainDetailedView: View {
@@ -51,7 +52,16 @@ struct DomainDetailedView: View {
                     
                 case .bulkImport:
                     DomainBulkImportView(domain:domain, mode:$mode)
+                    
+                case .download(let isDownloading, let tagId):
+                    DomainDownloadView(
+                        domain: domain,
+                        mode: $mode,
+                        downloadAllTags: isDownloading,
+                        selectedTagId: tagId
+                    )
                 }
+                
             }
         }
         .padding()

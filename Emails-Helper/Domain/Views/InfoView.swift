@@ -15,8 +15,7 @@ struct DomainInfoView: View {
     @State private var editedTagInfo: TagInfo? = nil
     @State private var newTagName: String = ""
     @State private var newIdealAmount: Int = 0
-    @State private var isShowingDeleteAlert: Bool = false
-
+    @State private var tagToDelete: TagInfo? = nil
     @FocusState private var focusedTagId: Int64?
 
     var body: some View {
@@ -108,7 +107,7 @@ struct DomainInfoView: View {
                 })
 
                 menuButton("Bulk Download", icon: "arrow.down.square", action: {
-                    ToastManager.shared.show(style: .warning, message: "Bulk dwoload not implemented yet")
+                    mode = .download(true, nil )
 
                 })
 
@@ -172,6 +171,24 @@ struct DomainInfoView: View {
                     tagCard(tagInfo)
                 }
             }
+            .alert(item: $tagToDelete) { tag in // 'tag' is the tagInfo we're deleting
+                        Alert(
+                            title: Text("Delete Tag?"),
+                            message: Text("Are you sure you want to delete tag \(tag.name)?"),
+                            primaryButton: .destructive(Text("Delete")) {
+                                // This now has the correct tag.id
+                                domain.deleteTag(tagId: tag.id)
+                                ToastManager.shared.show(
+                                    style: .info,
+                                    message: "Tag \(tag.name) deleted"
+                                )
+                            },
+                            secondaryButton: .cancel() {
+                                tagToDelete = nil
+                                // Setting tagToDelete back to nil dismisses the alert
+                            }
+                        )
+                    }
             .padding(.horizontal, 4)
         }
     }
@@ -220,7 +237,7 @@ struct DomainInfoView: View {
                     })
 
                     menuButton("Download", icon: "arrow.down.circle", action: {
-                        ToastManager.shared.show(style: .warning, message: "Dowload not implemented yet")
+                        mode = .download(false, tagInfo.id)
 
                     })
 
@@ -238,8 +255,7 @@ struct DomainInfoView: View {
                         role: .destructive,
                         tint: .red,
                         action: {
-                            isShowingDeleteAlert = true
-                        }
+                            tagToDelete = tagInfo                        }
                     )
                 }
                 .labelStyle(.titleAndIcon)
@@ -251,19 +267,6 @@ struct DomainInfoView: View {
             }
             .menuIndicator(.hidden)
             .buttonStyle(PlainButtonStyle())
-        }.alert("Delete Tag?", isPresented: $isShowingDeleteAlert) {
-            Button("Delete", role: .none) {
-                domain.deleteTag(tagId: tagInfo.id)
-
-                ToastManager.shared
-                    .show(
-                        style: .info,
-                        message: "Tag \(tagInfo.name) deleted"
-                    )
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Are you sure you want to delete tag \(tagInfo.name)?")
         }
 
         ProgressBar(tagInfo: tagInfo)

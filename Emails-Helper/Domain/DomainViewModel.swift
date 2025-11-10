@@ -318,7 +318,7 @@ class DomainViewModel: ObservableObject, Identifiable {
     
     func copyUpdates(from domain: DomainViewModel) -> Bool {
         name = domain.name.isEmpty ? name : domain.name
-        abbreviation = domain.abbreviation.isEmpty ? abbreviation : domain.name
+        abbreviation = domain.abbreviation.isEmpty ? abbreviation : domain.abbreviation
         exportType = domain.exportType
         saveFolder = domain.saveFolder
         

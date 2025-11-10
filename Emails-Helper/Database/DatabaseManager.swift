@@ -29,10 +29,28 @@ class DatabaseManager {
             DomainsTable.createTable(in: db)
             TagsTable.createTable(in: db)
             ImportsTable.createTable(in: db)
+            
+            
+            
+//            try db.run("""
+//                CREATE INDEX IF NOT EXISTS idx_leads_tag_active
+//                ON Leads(tagId, isActive, email);
+//            """)
+//
+//
+//            try db.run("""
+//               CREATE INDEX IF NOT EXISTS idx_tags_domain_active
+//               ON Tags(domainId, isActive);
+//            """)
 
-            for row in try! db.prepare(TagsTable.table) {
-                print(row[TagsTable.name])
-            }
+            
+
+            
+            
+//            for row in try! db.prepare(TagsTable.table) {
+//                print(row[TagsTable.name])
+//                print(row[TagsTable.id])
+//            }
 
 //            for row in try db.prepare("SELECT email, lastUsedAt, typeof(lastUsedAt) FROM leads") {
 //                print(row)
@@ -42,6 +60,7 @@ class DatabaseManager {
             print("DB Error: \(error)")
         }
     }
+    
 
     func databaseConnection() throws -> Connection {
         let fm = FileManager.default
@@ -60,7 +79,7 @@ class DatabaseManager {
         }
 
         let dbURL = folder.appendingPathComponent("emails-helper-db.sqlite3")
-
+        print(dbURL)
         return try Connection(dbURL.path)
     }
 }
@@ -281,7 +300,6 @@ enum LeadsTable {
         let domainCutoffDate = Calendar.current.date(byAdding: .day, value: -useLimit, to: Date()) ?? Date.distantPast
         let globalCutoffDate = Calendar.current.date(byAdding: .day, value: -globalUseLimit, to: Date()) ?? Date.distantPast
 
-        let dateFormatter = ISO8601DateFormatter()
         let domainCutoffString = dateFormatter.string(from: domainCutoffDate)
         let globalCutoffString = dateFormatter.string(from: globalCutoffDate)
 
@@ -320,7 +338,8 @@ enum LeadsTable {
         LEFT JOIN globalRecent G ON L.email = G.email
         LEFT JOIN domainRecent D ON L.email = D.email
         
-        WHERE T.domainId = ?
+        WHERE T.domainId = ? 
+          AND T.isActive = 1
         
         GROUP BY T.id, T.name, T.idealAmount
         ORDER BY T.name;
@@ -444,14 +463,19 @@ enum LeadsTable {
         let domainCutoffDate = Calendar.current.date(byAdding: .day, value: -domainUseLimit, to: Date()) ?? Date.distantPast
         let globalCutoffDate = Calendar.current.date(byAdding: .day, value: -globalUseLimit, to: Date()) ?? Date.distantPast
 
-        let dateFormatter = ISO8601DateFormatter()
+        
+
+        
+        
         let domainCutoffString = dateFormatter.string(from: domainCutoffDate)
         let globalCutoffString = dateFormatter.string(from: globalCutoffDate)
-
+        
+        let currentTimestamp = dateFormatter.string(from: Date())
+        
         let combinedSQL = """
         UPDATE leads
         SET isActive = 0,
-            lastUsedAt = CURRENT_TIMESTAMP
+            lastUsedAt = ?
         WHERE id IN (
             WITH globalRecent AS (
                 SELECT email, MAX(lastUsedAt) AS globalLastUsed
@@ -485,6 +509,7 @@ enum LeadsTable {
         do {
             let stmt = try db.prepare(
                 combinedSQL,
+                currentTimestamp,
                 domainId,
                 tagId,
                 globalCutoffString,
