@@ -48,7 +48,8 @@ class ExportViewModel: ObservableObject {
     @Published var folderName: String
     @Published var isSeparateFiles: Bool
 
-    let domain: DomainViewModel
+    @ObservedObject var domain: DomainViewModel
+    
     let allMergeTags: [String] = [
         "%d-name%",
         "%d-abrr%",

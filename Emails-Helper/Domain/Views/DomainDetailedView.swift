@@ -16,6 +16,22 @@ enum Mode {
     case deleted
     case bulkImport
     case download(Bool, Int64?)
+    case exclude(Bool, Int64?)
+
+    var name: String {
+        switch self {
+        case .info: return "Dashboard"
+        case .deleted: return "Deleted"
+        case .edit: return "Settings"
+        case .importLeads: return "Leads Import"
+        case .exportLeads: return "Leads Export"
+        case .bulkImport: return "Bulk Import"
+        case .download: return "Leads Download"
+        case .exclude: return "Leads Exclude"
+        case _: return "404"
+            
+        }
+    }
 }
 
 struct DomainDetailedView: View {
@@ -43,29 +59,33 @@ struct DomainDetailedView: View {
                     DomainImportView(
                         domain: domain,
                         mode: $mode,
-                        pickedTagId: tagId
+                        selectedTagId: tagId
                     )
                 case .exportLeads:
                     DomainExportView(domain: domain, mode: $mode)
                 case .deleted:
                     DomainDeletedView()
-                    
                 case .bulkImport:
-                    DomainBulkImportView(domain:domain, mode:$mode)
-                    
-                case .download(let isDownloading, let tagId):
+                    DomainBulkImportView(domain: domain, mode: $mode)
+                case .download(let downloadAllTags, let tagId):
                     DomainDownloadView(
                         domain: domain,
                         mode: $mode,
-                        downloadAllTags: isDownloading,
+                        downloadAllTags: downloadAllTags,
+                        selectedTagId: tagId
+                    )
+                case .exclude(let excludeAllTags, let tagId):
+                    DomainExcludeView(
+                        domain: domain,
+                        mode: $mode,
+                        excludeFromAll: excludeAllTags,
                         selectedTagId: tagId
                     )
                 }
-                
             }
         }
         .padding()
-        .navigationTitle(domain.abbreviation)
+        .navigationTitle("\(domain.abbreviation) - \(mode.name)")
         .toolbar {
             Button(action: { mode = .edit }) {
                 Image(systemName: "gearshape")

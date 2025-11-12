@@ -36,9 +36,11 @@ class ImportFile: ObservableObject, Identifiable {
         task = Task(priority: .userInitiated) {
             var allEmails: [String] = []
 
-            guard let dataFrame = ImportViewModel.getDataFrameFrom(url: url) else { return }
+            guard let dataFrame = EmailsInputViewModel.getDataFrameFrom(url: url) else {
+                return
+            }
 
-            let emailsFromFile = ImportViewModel.extractValidEmails(from: dataFrame)
+            let emailsFromFile = EmailsInputViewModel.extractValidEmails(from: dataFrame)
 
             allEmails.append(contentsOf: emailsFromFile ?? [])
 

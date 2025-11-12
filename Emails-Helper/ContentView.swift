@@ -22,7 +22,7 @@ class DomainsViewModel: ObservableObject {
 
         let result = rows.map { row in
             let domain = DomainViewModel(from: row)
-            domain.getTagsInfo()
+//            domain.getTagsInfo()
             
             return domain
         }

@@ -16,22 +16,22 @@
 import SwiftUI
 
 struct DomainDownloadView: View {
+    @StateObject var viewModel: DownloadViewModel = .init()
     
-    @StateObject var viewModel: DownloadViewModel
+    @ObservedObject var domain: DomainViewModel
     @Binding var mode: Mode
+    
+    
+    @State var fileName: String = ""
+    
+    @State var downloadAllTags: Bool
+    @State var selectedTagId: Int64?
+    @State var activityState: ActivityState = .all
+    @State var fieldsToInclude: Set<DownloadField> = [.email]
     
     @State private var isDownloading: Bool = false
     
-    init(domain: DomainViewModel, mode: Binding<Mode>, downloadAllTags: Bool, selectedTagId:Int64?) {
-        _viewModel = StateObject(
-            wrappedValue: DownloadViewModel(
-                domain: domain,
-                downloadAllTags:downloadAllTags,
-                selectedTagId: selectedTagId
-            )
-        )
-        _mode = mode
-    }
+
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -40,7 +40,11 @@ struct DomainDownloadView: View {
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 15) {
-                    TagSelectionView
+                    TagPickerView(
+                        domain: domain,
+                        pickedTagId: $selectedTagId,
+                        mode: .allowAll($downloadAllTags)
+                    )
                     Divider()
                     ActivitySelectionView
                     Divider()
@@ -52,17 +56,15 @@ struct DomainDownloadView: View {
             
             FooterView
         }
-        .padding() // Add padding to match other views
         .loadingOverlay(isShowing: $isDownloading, text: "Downloading...")
     }
     
-    // MARK: - Subviews
     
     private var HeaderView: some View {
         VStack(alignment: .leading) {
             HStack {
                 Text("File Name:").font(.title3)
-                TextField("Download file name", text: $viewModel.fileName)
+                TextField("Download file name", text: $fileName)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
             }
             SavePathView
@@ -71,41 +73,20 @@ struct DomainDownloadView: View {
     
     private var SavePathView: some View {
         Group {
-            if let folder = viewModel.domain.saveFolder {
-                let fileName = viewModel.fileName.isEmpty ? "download" : viewModel.fileName
+            if let folder = domain.saveFolder {
                 Text("Save Path: \(folder.path)/\(fileName).csv")
                     .font(.caption)
                     .foregroundColor(.gray)
             } else {
-                Text("Save Folder: Not set in domain settings")
+                Text("Save Folder: Not set")
                     .font(.caption)
                     .foregroundColor(.red)
             }
         }
     }
     
-    private var TagSelectionView: some View {
-        VStack(alignment: .leading) {
-            Toggle("Download from all tags", isOn: $viewModel.downloadAllTags.animation())
-                .toggleStyle(.checkbox)
-            
-            if !viewModel.downloadAllTags {
-                Picker("Select Tag:", selection: $viewModel.selectedTagId) {
-                    // Use .constant(nil) for the "None" tag,
-                    // but the picker requires a non-nil selection if possible.
-                    // We assume selectedTagId is set in init.
-                    ForEach(viewModel.domain.tagsInfo) { tag in
-                        Text(tag.name).tag(tag.id as Int64?)
-                    }
-                }
-                .pickerStyle(MenuPickerStyle())
-                .frame(maxWidth: 300)
-            }
-        }
-    }
-    
     private var ActivitySelectionView: some View {
-        Picker("Include:", selection: $viewModel.activityState) {
+        Picker("Include:", selection: $activityState) {
             ForEach(ActivityState.allCases) { state in
                 Text(state.rawValue).tag(state)
             }
@@ -123,7 +104,7 @@ struct DomainDownloadView: View {
                 ForEach(DownloadField.allCases) { field in
                     // We use a custom binding to ensure at least one
                     // field is always selected (i.e., .email)
-                    Toggle(field.rawValue, isOn: bindingForField(field))
+                    Toggle(field.label, isOn: bindingForField(field))
                         .toggleStyle(.checkbox)
                         .disabled(field == .email) // Can't disable email
                 }
@@ -141,10 +122,41 @@ struct DomainDownloadView: View {
     }
     
     private var DownloadButton: some View {
-        Button(action: {
+        Button(
+action: {
             Task { @MainActor in
                 isDownloading = true
-                let result = await viewModel.downloadLeads()
+                
+                
+                guard let saveFolderURL = domain.saveFolder else {
+                    ToastManager.shared.show(style: .warning, message: "Save folder not set for this domain")
+                    isDownloading = false
+                    return
+                }
+                
+                guard !fileName.isEmpty else {
+                    ToastManager.shared.show(style: .warning, message: "File name is required")
+                    isDownloading = false
+                    return
+                }
+                
+                
+                let fileUrl = saveFolderURL.appendingPathComponent("\(fileName).csv")
+                if !downloadAllTags && selectedTagId == nil {
+                    ToastManager.shared.show(style: .warning, message: "Choose Tag to download")
+                    isDownloading = false
+                    return
+                }
+                
+                
+                let result = await viewModel.downloadLeads(
+                    domainId: domain.id,
+                    fileURL: fileUrl,
+                    fieldsToInclude: fieldsToInclude,
+                    downloadAllTags:downloadAllTags ,
+                    selectedTagId :selectedTagId,
+                    activityState: activityState
+                )
                 isDownloading = false
                 
                 switch result {
@@ -153,8 +165,7 @@ struct DomainDownloadView: View {
                     mode = .info
                 case .failure:
                     ToastManager.shared.show(style: .error, message: "Download Failed")
-                case .noFolder:
-                    ToastManager.shared.show(style: .warning, message: "Save folder not set for this domain")
+                    
                 }
             }
         }) {
@@ -171,25 +182,19 @@ struct DomainDownloadView: View {
             .shadow(radius: 2)
         }
         .buttonStyle(PlainButtonStyle())
-        .disabled(viewModel.domain.saveFolder == nil)
     }
     
-    // MARK: - Helper Methods
     
-    /// Custom binding to manage the Set of fields
     private func bindingForField(_ field: DownloadField) -> Binding<Bool> {
         Binding<Bool>(
             get: {
-                viewModel.fieldsToInclude.contains(field)
+                fieldsToInclude.contains(field)
             },
             set: { isSelected in
                 if isSelected {
-                    viewModel.fieldsToInclude.insert(field)
+                    fieldsToInclude.insert(field)
                 } else {
-                    // Prevent un-checking the last item
-                    if viewModel.fieldsToInclude.count > 1 {
-                        viewModel.fieldsToInclude.remove(field)
-                    }
+                    fieldsToInclude.remove(field)
                 }
             }
         )

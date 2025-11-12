@@ -1,31 +1,35 @@
 //
-//  DomainImportView.swift
+//  ExcludeView.swift
 //  Emails-Helper
 //
-//  Created by Mykyta Krementar on 17/10/2025.
+//  Created by Mykyta Krementar on 11/11/2025.
 //
+
+
+
 
 import SwiftUI
 
-struct DomainImportView: View {
+
+struct DomainExcludeView: View {
     @ObservedObject var domain: DomainViewModel
     @Binding var mode: Mode
     
-    @StateObject var importViewModel: ImportViewModel = .init()
+    @StateObject var viewModel: ExcludeViewModel = .init()
     @StateObject var emailsInputViewModel: EmailsInputViewModel = .init()
     
-    @State var importName: String = ""
+    @State var excludeFromAll: Bool
     @State var selectedTagId: Int64?
     
-    @State var isImporting: Bool = false
+    @State var isExcluding: Bool = false
+    
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ImportNameInputView
             TagPickerView(
                 domain: domain,
                 pickedTagId: $selectedTagId,
-                mode: .regular
+                mode: .allowAll($excludeFromAll)
             )
             
             Divider()
@@ -36,6 +40,8 @@ struct DomainImportView: View {
             }
             
             Divider()
+            
+           
             HStack {
                 GoBackButtonView(mode: $mode, goBackMode: .info)
                 Spacer()
@@ -43,63 +49,55 @@ struct DomainImportView: View {
                     "Total Leads: \(emailsInputViewModel.emailsAll?.count.formatted(.number) ?? "Calculating...")"
                 )
                 Spacer()
-                ImportButton
+                ConfirmExcludeButton
             }
             .padding(.top, 10)
         }
-        .loadingOverlay(isShowing: $isImporting, text: "Importing...")
+        .loadingOverlay(isShowing: $isExcluding, text: "Excluding...")
     }
-        
-    private var ImportNameInputView: some View {
-        HStack {
-            Text("Import Name:").font(.title3)
-            TextField("Enter Import Name", text: $importName)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-        }
-    }
-        
-    private var ImportButton: some View {
+    
+    
+    private var ConfirmExcludeButton: some View {
         Button(
             action: {
                 Task { @MainActor in
-                    isImporting = true
-                    
-                    guard !importName.isEmpty else {
-                        ToastManager.shared.show(style: .warning, message: "Import Name is required")
-                        isImporting = false
-                        return
-                    }
+                    isExcluding = true
+                  
                     
                     guard let allEmails = emailsInputViewModel.emailsAll,
-                          let inputType = emailsInputViewModel.inputType
+                          let _ = emailsInputViewModel.inputType
                     else {
                         ToastManager.shared.show(style: .warning, message: "Wait for Leads to load")
-                        isImporting = false
-                        return
-                    }
-                    guard let selectedTagId else {
-                        ToastManager.shared.show(style: .warning, message: "Choose Tag to import")
-                        isImporting = false
+                        isExcluding = false
                         return
                     }
                     
-                    let result = await importViewModel.importLeads(
-                        importName: importName,
-                        tagId: selectedTagId,
+                    
+                    if !excludeFromAll && selectedTagId == nil {
+                        ToastManager.shared.show(style: .warning, message: "Choose Tag to Exclude")
+                        isExcluding = false
+                        return
+                    }
+                    
+                    let result = await viewModel.excludeLeads(
+                        domainId: domain.id,
+                        excludeFromAll:excludeFromAll,
+                        selectedTagId :selectedTagId,
                         allEmails: allEmails,
-                        inputType: inputType
                     )
                     
-                    isImporting = false
+                   
+                    
+                    isExcluding = false
                     
                     switch result {
                     case .failure:
-                        ToastManager.shared.show(style: .error, message: "Error while importing leads")
+                        ToastManager.shared.show(style: .error, message: "Error while excluding leads")
                     case .success:
                         ToastManager.shared
                             .show(
                                 style: .success,
-                                message: "Import Complete"
+                                message: "Exclude Complete"
                             )
                         mode = .info
                         domain.getTagsInfo()
@@ -108,13 +106,13 @@ struct DomainImportView: View {
 
             }) {
                 HStack(spacing: 8) {
-                    Image(systemName: "person.fill.badge.plus")
-                    Text("Finish Import")
+                    Image(systemName: "minus.circle")
+                    Text("Finish Exclude")
                 }
                 .font(.title2)
                 .padding(.vertical, 4)
                 .padding(.horizontal, 6)
-                .background(.green.opacity(0.3))
+                .background(.red.opacity(0.3))
                 .foregroundColor(.white)
                 .cornerRadius(8)
                 .shadow(radius: 2)

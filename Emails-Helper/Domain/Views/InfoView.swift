@@ -43,9 +43,7 @@ struct DomainInfoView: View {
             .buttonStyle(PlainButtonStyle())
         }
     }
-    
-    
-    
+
     private var HeaderDomainName: some View {
         HStack(spacing: 10) {
             Text(domain.name)
@@ -65,7 +63,7 @@ struct DomainInfoView: View {
 
     struct PulsingDot: View {
         @State private var scale: CGFloat = 0.7
-        
+
         var body: some View {
             Circle()
                 .frame(width: 10, height: 10)
@@ -80,8 +78,6 @@ struct DomainInfoView: View {
         }
     }
 
-    
-    
     private var ExportButton: some View {
         Button(action: { mode = .exportLeads }) {
             HStack(spacing: 4) {
@@ -102,12 +98,12 @@ struct DomainInfoView: View {
                 })
 
                 menuButton("Bulk Exclude", icon: "person.2.slash.fill", action: {
-                    ToastManager.shared.show(style: .warning, message: "Bulk Exclude not implemented yet")
+                    mode = .exclude(true, nil)
 
                 })
 
                 menuButton("Bulk Download", icon: "arrow.down.square", action: {
-                    mode = .download(true, nil )
+                    mode = .download(true, nil)
 
                 })
 
@@ -172,23 +168,23 @@ struct DomainInfoView: View {
                 }
             }
             .alert(item: $tagToDelete) { tag in // 'tag' is the tagInfo we're deleting
-                        Alert(
-                            title: Text("Delete Tag?"),
-                            message: Text("Are you sure you want to delete tag \(tag.name)?"),
-                            primaryButton: .destructive(Text("Delete")) {
-                                // This now has the correct tag.id
-                                domain.deleteTag(tagId: tag.id)
-                                ToastManager.shared.show(
-                                    style: .info,
-                                    message: "Tag \(tag.name) deleted"
-                                )
-                            },
-                            secondaryButton: .cancel() {
-                                tagToDelete = nil
-                                // Setting tagToDelete back to nil dismisses the alert
-                            }
+                Alert(
+                    title: Text("Delete Tag?"),
+                    message: Text("Are you sure you want to delete tag \(tag.name)?"),
+                    primaryButton: .destructive(Text("Delete")) {
+                        // This now has the correct tag.id
+                        domain.deleteTag(tagId: tag.id)
+                        ToastManager.shared.show(
+                            style: .info,
+                            message: "Tag \(tag.name) deleted"
                         )
+                    },
+                    secondaryButton: .cancel {
+                        tagToDelete = nil
+                        // Setting tagToDelete back to nil dismisses the alert
                     }
+                )
+            }
             .padding(.horizontal, 4)
         }
     }
@@ -232,7 +228,7 @@ struct DomainInfoView: View {
                     })
 
                     menuButton("Exclude", icon: "minus.circle", action: {
-                        ToastManager.shared.show(style: .warning, message: "Exlude not implemented yet")
+                        mode = .exclude(false, tagInfo.id)
 
                     })
 
@@ -255,7 +251,8 @@ struct DomainInfoView: View {
                         role: .destructive,
                         tint: .red,
                         action: {
-                            tagToDelete = tagInfo                        }
+                            tagToDelete = tagInfo
+                        }
                     )
                 }
                 .labelStyle(.titleAndIcon)
