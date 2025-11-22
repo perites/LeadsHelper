@@ -50,14 +50,17 @@ struct DomainInfoView: View {
                 .font(.title)
                 .fontWeight(.semibold)
 
-            if domain.fetchTagsTask != nil {
-//                ProgressView()
-//                    .scaleEffect(0.6)
-//                    .padding(.leading, 2)
-                PulsingDot()
-            } else {
-                Image(systemName: "checkmark.rectangle.stack")
-            }
+            Button(action: {
+                domain.getTagsCount()
+
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.clockwise.circle")
+                }
+                .contentShape(Rectangle())
+                
+            }.buttonStyle(.plain)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -113,33 +116,35 @@ struct DomainInfoView: View {
                     "Add new tag",
                     icon: "plus.circle",
                     action: {
-                        let formatter = DateFormatter()
-                        formatter.dateFormat = "yyyy-MM-dd-HH:mm:ss"
-                        let dateString = formatter.string(from: Date())
-                        let newName = "New Tag \(dateString)"
-                        let createdTagId = TagsTable
-                            .addTag(
-                                newName: newName,
-                                newDomainId: domain.id
-                            )
-
-                        guard let createdTagId else {
-                            ToastManager.shared
-                                .show(
-                                    style: .error,
-                                    message: "Tag creation failed"
+                        Task {
+                            let formatter = DateFormatter()
+                            formatter.dateFormat = "yyyy-MM-dd-HH:mm:ss"
+                            let dateString = formatter.string(from: Date())
+                            let newName = "New Tag \(dateString)"
+                            let createdTagId = await TagsTable
+                                .addTag(
+                                    newName: newName,
+                                    newDomainId: domain.id
                                 )
-                            return
+
+                            guard let createdTagId else {
+                                ToastManager.shared
+                                    .show(
+                                        style: .error,
+                                        message: "Tag creation failed"
+                                    )
+                                return
+                            }
+                            ToastManager.shared.show(style: .success, message: "Tag created successfully")
+                            domain
+                                .addTagInfo(
+                                    tagId: createdTagId,
+                                    name: newName,
+                                    idealAmount: 0
+                                )
+                            editedTagInfo = domain.tagsInfo.first { $0.id == createdTagId }
+                            focusedTagId = createdTagId
                         }
-                        ToastManager.shared.show(style: .success, message: "Tag created successfully")
-                        domain
-                            .addTagInfo(
-                                tagId: createdTagId,
-                                name: newName,
-                                idealAmount: 0
-                            )
-                        editedTagInfo = domain.tagsInfo.first { $0.id == createdTagId }
-                        focusedTagId = createdTagId
                     }
                 )
             }
@@ -172,8 +177,10 @@ struct DomainInfoView: View {
                     title: Text("Delete Tag?"),
                     message: Text("Are you sure you want to delete tag \(tag.name)?"),
                     primaryButton: .destructive(Text("Delete")) {
-                        // This now has the correct tag.id
-                        domain.deleteTag(tagId: tag.id)
+                        Task {
+                            // This now has the correct tag.id
+                            await domain.deleteTag(tagId: tag.id)
+                        }
                         ToastManager.shared.show(
                             style: .info,
                             message: "Tag \(tag.name) deleted"
@@ -223,8 +230,8 @@ struct DomainInfoView: View {
                     })
 
                     menuButton("Imports History", icon: "clock.arrow.circlepath", action: {
-                        ToastManager.shared.show(style: .warning, message: "History not implemented yet")
-
+//                        ToastManager.shared.show(style: .warning, message: "History not implemented yet")
+                        mode = .history(tagInfo.id)
                     })
 
                     menuButton("Exclude", icon: "minus.circle", action: {
@@ -266,7 +273,7 @@ struct DomainInfoView: View {
             .buttonStyle(PlainButtonStyle())
         }
 
-        ProgressBar(tagInfo: tagInfo)
+        ProgressBar(domain: domain, tagInfo: tagInfo)
             .frame(height: 20)
     }
 
@@ -302,11 +309,11 @@ struct DomainInfoView: View {
                 guard !newTagName.isEmpty else { return }
                 domain.updateTagInfo(tagId: tagInfo.id, type: .text(newTagName, newIdealAmount))
                 ToastManager.shared.show(style: .info, message: "Tag saved")
+            
             })
         }
     }
 
-    /// Creates a button for use inside a Menu
     private func menuButton(_ title: String, icon: String, role: ButtonRole? = nil, tint: Color? = nil, action: @escaping () -> Void) -> some View {
         Button(role: role, action: action) {
             Label(title, systemImage: icon).font(.body)
@@ -315,6 +322,8 @@ struct DomainInfoView: View {
     }
 
     private struct ProgressBar: View {
+        @ObservedObject var domain: DomainViewModel
+
         let tagInfo: TagInfo
 
         enum BarColor {
@@ -336,7 +345,7 @@ struct DomainInfoView: View {
                 return BarColorScheme.default
             }
 
-            let ratio = Double(tagInfo.availableLeadsCount) / Double(
+            let ratio = Double(tagInfo.availableLeadsCount ?? 0) / Double(
                 tagInfo.idealAmount
             )
 
@@ -357,14 +366,16 @@ struct DomainInfoView: View {
         var body: some View {
             GeometryReader { geo in
                 let usedWidth = tagInfo.idealAmount > 0 ? geo.size.width * min(
-                    CGFloat(tagInfo.activeLeadsCount) / CGFloat(
+                    CGFloat(tagInfo.activeLeadsCount ?? 0) / CGFloat(
                         tagInfo.idealAmount
                     ),
                     1.0
                 ) : 0
 
                 let unavailableWidth = tagInfo.idealAmount > 0 ? geo.size.width * min(
-                    CGFloat(tagInfo.unavailableLeadsCount) / CGFloat(tagInfo.idealAmount),
+                    CGFloat(tagInfo.unavailableLeadsCount ?? 0) / CGFloat(
+                        tagInfo.idealAmount
+                    ),
                     1.0
                 ) : 0
 
@@ -386,9 +397,15 @@ struct DomainInfoView: View {
                         .frame(width: unavailableWidth)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                     HStack {
-                        Text("\(tagInfo.availableLeadsCount)")
+                        if domain.fetchTagsCountTask != nil || tagInfo.updateTask != nil{
+                            PulsingDot().padding(.leading, 10)
+                        } else {
+                            Text(
+                                "\(tagInfo.availableLeadsCount?.formatted(.number) ?? "No info")"
+                            )
                             .foregroundColor(.white)
                             .padding(.leading, 10)
+                        }
                     }
                 }
             }

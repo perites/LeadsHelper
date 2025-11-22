@@ -5,11 +5,7 @@
 //  Created by Mykyta Krementar on 11/11/2025.
 //
 
-
-
-
 import SwiftUI
-
 
 struct DomainExcludeView: View {
     @ObservedObject var domain: DomainViewModel
@@ -22,7 +18,6 @@ struct DomainExcludeView: View {
     @State var selectedTagId: Int64?
     
     @State var isExcluding: Bool = false
-    
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -41,7 +36,6 @@ struct DomainExcludeView: View {
             
             Divider()
             
-           
             HStack {
                 GoBackButtonView(mode: $mode, goBackMode: .info)
                 Spacer()
@@ -56,14 +50,12 @@ struct DomainExcludeView: View {
         .loadingOverlay(isShowing: $isExcluding, text: "Excluding...")
     }
     
-    
     private var ConfirmExcludeButton: some View {
         Button(
             action: {
                 Task { @MainActor in
                     isExcluding = true
                   
-                    
                     guard let allEmails = emailsInputViewModel.emailsAll,
                           let _ = emailsInputViewModel.inputType
                     else {
@@ -71,7 +63,6 @@ struct DomainExcludeView: View {
                         isExcluding = false
                         return
                     }
-                    
                     
                     if !excludeFromAll && selectedTagId == nil {
                         ToastManager.shared.show(style: .warning, message: "Choose Tag to Exclude")
@@ -81,12 +72,10 @@ struct DomainExcludeView: View {
                     
                     let result = await viewModel.excludeLeads(
                         domainId: domain.id,
-                        excludeFromAll:excludeFromAll,
-                        selectedTagId :selectedTagId,
+                        excludeFromAll: excludeFromAll,
+                        selectedTagId: selectedTagId,
                         allEmails: allEmails,
                     )
-                    
-                   
                     
                     isExcluding = false
                     
@@ -100,7 +89,12 @@ struct DomainExcludeView: View {
                                 message: "Exclude Complete"
                             )
                         mode = .info
-                        domain.getTagsInfo()
+                        
+                        if let selectedTagId {
+                            domain.updateTagInfo(tagId: selectedTagId, type: .count)
+                        } else {
+                            domain.getTagsCount()
+                        }
                     }
                 }
 

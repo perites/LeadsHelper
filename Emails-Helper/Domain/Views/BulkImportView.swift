@@ -75,7 +75,7 @@ struct DomainBulkImportView: View {
                     case .failure:
                         ToastManager.shared.show(style: .error, message: "Error while importing leads")
                     case .success:
-                        domain.getTagsInfo()
+                        domain.getTagsCount()
                         
                         ToastManager.shared
                             .show(

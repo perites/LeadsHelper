@@ -13,16 +13,24 @@ struct TagInfo: Identifiable {
     var name: String
     var idealAmount: Int
     
-    var inactiveLeadsCount: Int
-    var activeLeadsCount: Int
-    var availableLeadsCount: Int
+    var inactiveLeadsCount: Int?
+    var activeLeadsCount: Int?
+    var availableLeadsCount: Int?
     
-    var allLeadsCount: Int {
-        inactiveLeadsCount + activeLeadsCount
+    var updateTask:Task<Void, Never>?
+    
+    var allLeadsCount: Int? {
+        guard let inactiveLeadsCount, let activeLeadsCount else {
+            return nil
+        }
+        return inactiveLeadsCount + activeLeadsCount
     }
     
-    var unavailableLeadsCount: Int {
-        activeLeadsCount - availableLeadsCount
+    var unavailableLeadsCount: Int? {
+        guard let activeLeadsCount, let availableLeadsCount else {
+            return nil
+        }
+        return activeLeadsCount - availableLeadsCount
     }
 }
 
@@ -33,14 +41,14 @@ class DomainViewModel: ObservableObject, Identifiable {
     @Published var abbreviation: String
     @Published var exportType: Int
     @Published var saveFolder: URL?
-    @Published var deleted: Bool = false
+    @Published var isActive: Bool
     @Published var lastExportRequest: ExportRequest?
     @Published var useLimit: Int
     @Published var globalUseLimit: Int
     
     @Published var tagsInfo: [TagInfo]
     
-    var fetchTagsTask: Task<Void, Never>?
+    @Published var fetchTagsCountTask: Task<Void, Never>?
     
     var strExportType: String {
         switch exportType {
@@ -78,41 +86,42 @@ class DomainViewModel: ObservableObject, Identifiable {
         _globalUseLimit = .init(initialValue: dbRow[DomainsTable.globalUseLimit])
         
         _tagsInfo = .init(initialValue: [])
+        _isActive = .init(initialValue: dbRow[DomainsTable.isActive])
         
         self.dbRow = dbRow
     }
     
-    func getTags() -> [(id: Int64, name: String, idealAmount: Int)]? {
-        let query = TagsTable.table.filter(TagsTable.domainId == id && TagsTable.isActive == true).select(
-            TagsTable.id,
-            TagsTable.name,
-            TagsTable.idealAmount
-        )
-                
-        do {
-            let result = try DatabaseManager.shared.db.prepare(
-                query
-            ).map { row in
-                (
-                    id: row[TagsTable.id],
-                    name: row[TagsTable.name],
-                    idealAmount: row[TagsTable.idealAmount]
-                )
-            }
-            return result
-        } catch {
-            print("Failed to fetch tags with lead counts: \(error)")
-            return nil
-        }
-    }
-    
+//    func getTags() -> [(id: Int64, name: String, idealAmount: Int)]? {
+//        let query = TagsTable.table.filter(TagsTable.domainId == id && TagsTable.isActive == true).select(
+//            TagsTable.id,
+//            TagsTable.name,
+//            TagsTable.idealAmount
+//        )
+//
+//        do {
+//            let result = try DatabaseManager.shared.db.prepare(
+//                query
+//            ).map { row in
+//                (
+//                    id: row[TagsTable.id],
+//                    name: row[TagsTable.name],
+//                    idealAmount: row[TagsTable.idealAmount]
+//                )
+//            }
+//            return result
+//        } catch {
+//            print("Failed to fetch tags with lead counts: \(error)")
+//            return nil
+//        }
+//    }
+//
 //    func getTagsInfo() {
 //        let tags = getTags()
 //        var result: [TagInfo] = []
-//        
+//
 //        for tag in tags ?? [] {
 //            let tagCount = getTagCount(for: tag.id)
-//            
+//
 //            result
 //                .append(
 //                    TagInfo(
@@ -125,62 +134,127 @@ class DomainViewModel: ObservableObject, Identifiable {
 //                    )
 //                )
 //        }
-//            
+//
 //        tagsInfo = result
 //    }
     
-    func getTagsInfo() {
-        fetchTagsTask?.cancel()
-        fetchTagsTask = Task(priority: .high) {
+//    func getTagsInfo() {
+//        fetchTagsCountTask?.cancel()
+//        fetchTagsCountTask = Task {
+//            let result = LeadsTable.getEmails(
+//                with: ,
+//                domainId: <#T##Int64#>,
+//                amount: <#T##Int#>,
+//                domainUseLimit: <#T##Int#>,
+//                globalUseLimit: <#T##Int#>,
+//                justCount: <#T##Bool#>
+//            )
+//
+//
+//
+//            (
+//                domainId: id,
+//                useLimit: useLimit,
+//                globalUseLimit: globalUseLimit
+//            )
+//
+//            guard !Task.isCancelled else { return }
+//            await MainActor.run {
+//                self.tagsInfo = result
+//                self.fetchTagsCountTask = nil
+//                ToastManager.shared
+//                    .show(style: .info, message: "Tags Info loaded for \(name)")
+//            }
+//        }
+//    }
+    
+//    func getTagsCount() {
+//        fetchTagsCountTask?.cancel()
+//        fetchTagsCountTask = Task {
+//
+//            var updatedList = self.tagsInfo
+//            for index in updatedList.indices {
+//                guard !Task.isCancelled else { return }
+//                let tagId = updatedList[index].id
+//                let result = await LeadsTable.getTagStats(
+//                    tagId: tagId,
+//                    domainId: self.id,
+//                    domainUseLimit: self.useLimit,
+//                    globalUseLimit: self.globalUseLimit,
+//                )
+//                updatedList[index].inactiveLeadsCount = result.inactiveLeadsCount
+//                updatedList[index].activeLeadsCount = result.activeLeadsCount
+//                updatedList[index].availableLeadsCount = result.availableLeadsCount
+//            }
+//
+//            let finalList = updatedList
+//
+//            guard !Task.isCancelled else { return }
+//
+//            await MainActor.run {
+//                self.tagsInfo = finalList
+//                self.fetchTagsCountTask = nil
+//
+//                ToastManager.shared.show(
+//                    style: .info,
+//                    message: "Tags Info loaded for \(self.name)"
+//                )
+//            }
+//        }
+//    }
+    
+    func getTagsCount() {
+        fetchTagsCountTask?.cancel()
+        
+        let currentTags = tagsInfo
+        let tagIds = currentTags.map { $0.id }
+        
+        fetchTagsCountTask = Task {
+            guard !Task.isCancelled else { return }
             
-
-            
-            let result = LeadsTable.fetchTagsInfoData(
-                domainId: id,
-                useLimit: useLimit,
-                globalUseLimit: globalUseLimit
+            let statsMap = await LeadsTable.getBatchTagStats(
+                tagIds: tagIds,
+                domainId: self.id,
+                domainUseLimit: self.useLimit,
+                globalUseLimit: self.globalUseLimit
             )
             
             guard !Task.isCancelled else { return }
+
+            var updatedList = currentTags
+            for index in updatedList.indices {
+                let id = updatedList[index].id
+                if let stats = statsMap[id] {
+                    updatedList[index].inactiveLeadsCount = stats.inactive
+                    updatedList[index].activeLeadsCount = stats.active
+                    updatedList[index].availableLeadsCount = stats.available
+                } else {
+                    updatedList[index].inactiveLeadsCount = 0
+                    updatedList[index].activeLeadsCount = 0
+                    updatedList[index].availableLeadsCount = 0
+                }
+            }
+            
+            let finalList = updatedList
             await MainActor.run {
-                self.tagsInfo = result
-                self.fetchTagsTask = nil
-                ToastManager.shared
-                    .show(style: .info, message: "Tags Info loaded for \(name)")
+                self.tagsInfo = finalList
+                self.fetchTagsCountTask = nil
+                
+                ToastManager.shared.show(
+                    style: .info,
+                    message: "Tags Info loaded for \(self.name)"
+                )
             }
         }
-        
     }
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-//    func getTagCount(for tagId: Int64) -> (inactive: Int, active: Int, available: Int) {
-//        let inactiveLeadsCount = LeadsTable.countAllLeads(with: tagId, active: false)
-//        let activeLeadsCount = LeadsTable.countAllLeads(with: tagId, active: true)
-//        let availableLeadsCount = LeadsTable.countAvailableLeads(
-//            with: tagId,
-//            domainId: id,
-//            domainUseLimit: useLimit,
-//            globalUseLimit: globalUseLimit
-//        )
-//        
-//        return (inactive: inactiveLeadsCount, active: activeLeadsCount, available: availableLeadsCount)
-//    }
     
     enum TagUpdateType {
         case count
         case text(String, Int)
     }
 
-    func deleteTag(tagId: Int64) {
-        TagsTable.deleteTag(id: tagId)
+    func deleteTag(tagId: Int64) async {
+        await TagsTable.deleteTag(id: tagId)
         tagsInfo.removeAll { $0.id == tagId }
     }
     
@@ -196,6 +270,8 @@ class DomainViewModel: ObservableObject, Identifiable {
                     availableLeadsCount: 0
                 )
             )
+        
+        tagsInfo = tagsInfo.sorted { $0.name < $1.name }
     }
     
     func updateTagInfo(tagId: Int64, type: TagUpdateType) {
@@ -204,20 +280,37 @@ class DomainViewModel: ObservableObject, Identifiable {
             
         switch type {
         case .text(let newName, let newIdealAmount):
-            TagsTable.editTag(id: tagId, newName: newName, newIdealAmount: newIdealAmount)
-            tagsInfo[index].name = newName
-            tagsInfo[index].idealAmount = newIdealAmount
+            Task{
+                await TagsTable.editTag(id: tagId, newName: newName, newIdealAmount: newIdealAmount)
+                await MainActor.run {
+                    tagsInfo[index].name = newName
+                    tagsInfo[index].idealAmount = newIdealAmount
+                    tagsInfo = tagsInfo.sorted { $0.name < $1.name }
+                }
+            }
             
         case .count:
-            print("Count Updates Not Ready")
-//            let tagCount = getTagCount(for: tagId)
-//            tagsInfo[index].inactiveLeadsCount = tagCount.inactive
-//            tagsInfo[index].activeLeadsCount = tagCount.active
-//            tagsInfo[index].availableLeadsCount = tagCount.available
+            tagsInfo[index].updateTask =  Task {
+                
+                
+                
+                let tagCount = await LeadsTable.getTagStats(
+                    tagId: tagId,
+                    domainId: self.id,
+                    domainUseLimit: self.useLimit,
+                    globalUseLimit: self.globalUseLimit
+                )
+                await MainActor.run {
+                    tagsInfo[index].inactiveLeadsCount = tagCount.inactiveLeadsCount
+                    tagsInfo[index].activeLeadsCount = tagCount.activeLeadsCount
+                    tagsInfo[index].availableLeadsCount = tagCount.availableLeadsCount
+                    tagsInfo[index].updateTask = nil
+                }
+            }
         }
     }
     
-    func updateLastExportRequest(newExportRequest: ExportRequest) {
+    func updateLastExportRequest(newExportRequest: ExportRequest) async {
         lastExportRequest = newExportRequest
         let jsonTagsRequests = try? JSONEncoder().encode(newExportRequest)
         let jsonStringTagsRequests = String(
@@ -226,15 +319,16 @@ class DomainViewModel: ObservableObject, Identifiable {
         )!
         
         do {
-            let db = DatabaseManager.shared.db
             let domainIdFilter = DomainsTable.table.filter(
                 DomainsTable.id == id
             )
-            try db?.run(domainIdFilter.update(
+            try await DatabaseActor.shared.dbUpdate(domainIdFilter.update(
                 DomainsTable.lastExportRequest <- jsonStringTagsRequests
             ))
             
-            if let updatedRow = try db?.pluck(domainIdFilter) {
+            if let updatedRow = try await DatabaseActor.shared.dbPluck(
+                domainIdFilter
+            ) {
                 dbRow = updatedRow
             }
             
@@ -290,29 +384,31 @@ class DomainViewModel: ObservableObject, Identifiable {
     }
     
     func saveToDb() {
-        do {
-            let db = DatabaseManager.shared.db
-            let domainIdFilter = DomainsTable.table.filter(
-                DomainsTable.id == id
-            )
-            try db?.run(domainIdFilter.update(
-                DomainsTable.name <- name,
-                DomainsTable.abbreviation <- abbreviation,
-                DomainsTable.exportType <- exportType,
-                DomainsTable.saveFolder <- Self.createBlob(from: saveFolder),
-                DomainsTable.useLimit <- useLimit,
-                DomainsTable.globalUseLimit <- globalUseLimit
-            ))
-            
-            
-            if let updatedRow = try db?.pluck(domainIdFilter) {
-                dbRow = updatedRow
+        Task {
+            do {
+                let domainIdFilter = DomainsTable.table.filter(
+                    DomainsTable.id == id
+                )
+                try await DatabaseActor.shared.dbUpdate(domainIdFilter.update(
+                    DomainsTable.name <- name,
+                    DomainsTable.abbreviation <- abbreviation,
+                    DomainsTable.exportType <- exportType,
+                    DomainsTable.saveFolder <- Self.createBlob(from: saveFolder),
+                    DomainsTable.useLimit <- useLimit,
+                    DomainsTable.globalUseLimit <- globalUseLimit
+                ))
+                
+                if let updatedRow = try await DatabaseActor.shared.dbPluck(
+                    domainIdFilter
+                ) {
+                    dbRow = updatedRow
+                }
+                
+                print("Domain updated: \(name)")
+                
+            } catch {
+                print("Failed to update domain: \(error)")
             }
-            
-            print("Domain updated: \(name)")
-            
-        } catch {
-            print("Failed to update domain: \(error)")
         }
     }
     
@@ -327,26 +423,32 @@ class DomainViewModel: ObservableObject, Identifiable {
         useLimit = domain.useLimit
         globalUseLimit = domain.globalUseLimit
         
-        deleted = domain.deleted
+        isActive = domain.isActive
         
         saveToDb()
 
-        
         return limitsChanged
-        
-        
     }
     
-    func delete() {
+    func delete() async {
         do {
-            let db = DatabaseManager.shared.db
-            let domainRow = DomainsTable.table.filter(DomainsTable.id == id)
-            try db?.run(domainRow.delete())
-            deleted = true
-            print("Domain deleted: \(name)")
-                
+            let domainIdFilter = DomainsTable.table.filter(
+                DomainsTable.id == id
+            )
+            try await DatabaseActor.shared.dbUpdate(domainIdFilter.update(
+                DomainsTable.isActive <- false
+            ))
+            
+            if let updatedRow = try await DatabaseActor.shared.dbPluck(
+                domainIdFilter
+            ) {
+                dbRow = updatedRow
+            }
+            
+            print("Domain set inactive: \(name)")
+            
         } catch {
-            print("Failed to delete domain: \(error)")
+            print("Failed to update domain: \(error)")
         }
     }
 }

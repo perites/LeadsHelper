@@ -24,13 +24,13 @@ class ImportViewModel: ObservableObject {
     ) async -> ImportResult {
         let start = Date()
         
-        let importId = ImportsTable.addImport(
+        let importId = await ImportsTable.addImport(
             newName: importName,
             newTagId: tagId,
             newType: inputType
         )!
         
-        LeadsTable.addLeadsBulk(
+        await DatabaseActor.shared.addLeadsBulk(
             newEmails: allEmails,
             newImportId: importId,
             newTagId: tagId

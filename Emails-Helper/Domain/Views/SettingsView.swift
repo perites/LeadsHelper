@@ -119,15 +119,15 @@ struct DomainSettingsView: View {
 
     private var SaveButton: some View {
         Button(
-            action: {
-                let limitChanged = domain.copyUpdates(from: editableDomain)
-                if limitChanged  {
-                    domain.getTagsInfo()
+            action: { Task {
+                let limitChanged = await domain.copyUpdates(from: editableDomain)
+                if limitChanged {
+                    domain.getTagsCount()
                 }
                 ToastManager.shared.show(style: .info, message: "Domain \(domain.name) updated")
                 mode = .info
 
-            }) {
+            }}) {
                 HStack(spacing: 6) {
                     Image(systemName: "gear.badge.checkmark")
                         .resizable()
@@ -169,9 +169,14 @@ struct DomainSettingsView: View {
             .buttonStyle(PlainButtonStyle())
             .alert("Delete Domain?", isPresented: $isShowingDeleteAlert) {
                 Button("Delete", role: .none) {
-                    domain.delete()
-                    ToastManager.shared.show(style: .info, message: "Domain \(domain.name) deleted successfully")
-                    mode = .deleted
+                    domain.isActive = false
+                    Task {
+                        await domain.delete()
+                        await MainActor.run {
+                            ToastManager.shared.show(style: .info, message: "Domain \(domain.name) deleted successfully")
+                            mode = .deleted
+                        }
+                    }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {

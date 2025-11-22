@@ -9,49 +9,42 @@ import SFSymbols
 import SwiftUI
 
 class DomainsViewModel: ObservableObject {
-    @Published var domains: [DomainViewModel]
+    @Published var domains: [DomainViewModel] = []
 
-    init() {
-        _domains = .init(wrappedValue: Self.fetchDomais())
-    }
-
-    static func fetchDomais() -> [DomainViewModel] {
-        guard let rows = try? DatabaseManager.shared.db.prepare(DomainsTable.table) else {
-            return []
+    func fetchDomais() async {
+        let query = DomainsTable.table.filter(DomainsTable.isActive)
+        guard let rows = try? await DatabaseActor.shared.dbFetch(query) else {
+            return
         }
 
-        let result = rows.map { row in
-            let domain = DomainViewModel(from: row)
-//            domain.getTagsInfo()
-            
-            return domain
+        let result = rows.map { row in DomainViewModel(from: row) }
+
+        for domain in result {
+            domain.tagsInfo = await TagsTable.getTags(with: domain.id)
         }
 
-        return result
+        for domain in result {
+            domain.getTagsCount()
+        }
+
+        
+        guard !Task.isCancelled else { return }
+        await MainActor.run {
+            domains = result
+        }
     }
 
-    func addDomain() {
+    func addDomain() async -> Bool {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd-HH:mm:ss"
         let dateString = formatter.string(from: Date())
-        let rowId = DomainsTable.addDomain(newName: "New Domain \(dateString)")
-        if let rowId {
-            ToastManager.shared
-                .show(
-                    style: .success,
-                    message: "Domain created successfully!",
-                    duration: 3
-                )
-
-            domains.append(DomainViewModel(from: DomainsTable.findById(id: rowId)!))
-
-        } else {
-            ToastManager.shared
-                .show(
-                    style: .error,
-                    message: "Could not create domain!"
-                )
+        let rowId = await DomainsTable.addDomain(newName: "New Domain \(dateString)")
+        guard let rowId else { return false }
+        let domainRow = await DomainsTable.findById(id: rowId)!
+        await MainActor.run {
+            domains.append(DomainViewModel(from: domainRow))
         }
+        return true
     }
 }
 
@@ -59,7 +52,7 @@ struct DomainRowView: View {
     @ObservedObject var domain: DomainViewModel
 
     var body: some View {
-        if domain.deleted {
+        if !domain.isActive {
             EmptyView()
         } else {
             Text(domain.name)
@@ -77,9 +70,18 @@ struct ContentView: View {
 
     var filteredDomains: [DomainViewModel] {
         if searchText.isEmpty {
-            return viewModel.domains.filter { !$0.deleted }
+            return viewModel.domains.filter { $0.isActive }
         } else {
-            return viewModel.domains.filter { !$0.deleted && ($0.name.localizedCaseInsensitiveContains(searchText) || $0.abbreviation.localizedCaseInsensitiveContains(searchText)) }
+            return viewModel.domains
+                .filter {
+                    $0.isActive && (
+                        $0.name
+                            .localizedCaseInsensitiveContains(
+                                searchText
+                            ) || $0.abbreviation
+                            .localizedCaseInsensitiveContains(searchText)
+                    )
+                }
         }
     }
 
@@ -97,7 +99,24 @@ struct ContentView: View {
             .toolbar {
                 Spacer()
                 Button(action: {
-                    viewModel.addDomain()
+                    Task {
+                        let result = await viewModel.addDomain()
+                        await MainActor.run {
+                            if result {
+                                ToastManager.shared.show(
+                                    style: .success,
+                                    message: "Domain created successfully!",
+                                    duration: 3
+                                )
+
+                            } else {
+                                ToastManager.shared.show(
+                                    style: .error,
+                                    message: "Could not create domain!"
+                                )
+                            }
+                        }
+                    }
                 }) {
                     Image(systemName: "plus.circle")
                 }
@@ -110,6 +129,8 @@ struct ContentView: View {
             } else {
                 Text("Select a domain").foregroundStyle(.secondary)
             }
+        }.task {
+            await viewModel.fetchDomais()
         }
     }
 

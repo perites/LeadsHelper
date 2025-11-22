@@ -79,7 +79,6 @@ class DownloadViewModel: ObservableObject {
     }
 
     func downloadLeads(domainId: Int64, fileURL: URL, fieldsToInclude: Set<DownloadField>, downloadAllTags: Bool, selectedTagId: Int64?, activityState: ActivityState) async -> DownloadResult {
-        guard let db = DatabaseManager.shared.db else { return .failure }
 
         let columns = fieldsToInclude.map(\.expression)
         let fieldsToInclude = fieldsToInclude.map { field in
@@ -119,7 +118,7 @@ class DownloadViewModel: ObservableObject {
         do {
             var dataFrame = DataFrame()
 
-            for row in try db.prepare(query) {
+            for row in try await DatabaseActor.shared.dbFetch(query){
                 for field in fieldsToInclude {
                     fieldsValues[field.label]?
                         .append(field.extract(row))

@@ -49,7 +49,7 @@ class ExportViewModel: ObservableObject {
     @Published var isSeparateFiles: Bool
 
     @ObservedObject var domain: DomainViewModel
-    
+
     let allMergeTags: [String] = [
         "%d-name%",
         "%d-abrr%",
@@ -68,7 +68,7 @@ class ExportViewModel: ObservableObject {
     }
 
     init(domain: DomainViewModel) {
-        self.domain = domain
+        _domain = .init(initialValue: domain)
 
         _fileName = .init(initialValue: domain.lastExportRequest?.fileName ?? "")
         _folderName = .init(initialValue: domain.lastExportRequest?.folderName ?? "")
@@ -83,7 +83,7 @@ class ExportViewModel: ObservableObject {
                 return TagRequest(
                     tagId: tag.id,
                     tagName: tag.name,
-                    tagCount: tag.availableLeadsCount,
+                    tagCount: tag.availableLeadsCount ?? 0,
                     requestedAmount: previous?.requestedAmount
                 )
             }
@@ -120,7 +120,7 @@ class ExportViewModel: ObservableObject {
             return .noFolder
         }
 
-        let fulfilledTagsRequests = fulfillTagsRequests()
+        let fulfilledTagsRequests = await fulfillTagsRequests()
 
         let lastExportRequest = ExportRequest(
             fileName: fileName,
@@ -130,8 +130,11 @@ class ExportViewModel: ObservableObject {
         )
 
         await MainActor.run {
-            domain
-                .updateLastExportRequest(newExportRequest: lastExportRequest)
+            Task{
+                await domain
+                    .updateLastExportRequest(newExportRequest: lastExportRequest)
+                
+            }
 
             tagsRequests = fulfilledTagsRequests
         }
@@ -172,27 +175,23 @@ class ExportViewModel: ObservableObject {
             saveFile(content: content, path: fileURL)
         }
 
-        await MainActor.run {
-            domain.getTagsInfo()
-        }
-
         return .success
     }
 
-    func fulfillTagsRequests() -> [TagRequest] {
+    func fulfillTagsRequests() async -> [TagRequest] {
         var fulfilledTagsRequests = tagsRequests
 
         for (index, tagRequest) in tagsRequests.enumerated() {
-            let emails = LeadsTable.getEmails(
-                with: tagRequest.tagId,
+            let result = await LeadsTable.getEmails(
+                tagId: tagRequest.tagId,
                 domainId: domain.id,
                 amount: tagRequest.requestedAmount ?? 0,
                 domainUseLimit: domain.useLimit,
-                globalUseLimit: domain.globalUseLimit
-                
+                globalUseLimit: domain.globalUseLimit,
             )
-
-            fulfilledTagsRequests[index].emails = emails
+            
+            fulfilledTagsRequests[index].emails = result
+            
         }
 
         return fulfilledTagsRequests

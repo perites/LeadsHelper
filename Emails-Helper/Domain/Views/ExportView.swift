@@ -25,7 +25,9 @@ struct DomainExportView: View {
         VStack(alignment: .leading, spacing: 20) {
             HeaderView
             Divider()
-
+            Button("Test", action: {
+                isExporting = true
+            })
             ScrollView {
                 VStack(spacing: 12) {
                     ForEach($viewModel.tagsRequests) { $tagRequest in
@@ -151,23 +153,24 @@ struct DomainExportView: View {
     private var ExportButton: some View {
         Button(
             action: {
-                Task { @MainActor in
-                    isExporting = true
-
+                isExporting = true
+                Task {
                     let result = await viewModel.exportLeads()
-
-                    isExporting = false
-
-                    switch result {
-                    case .noFolder:
-                        ToastManager.shared.show(style: .warning, message: "Specify a folder to export to")
-                    case .failure:
-                        ToastManager.shared.show(style: .error, message: "Error while exporting leads")
-                    case .success:
-                        ToastManager.shared.show(style: .success, message: "Export Complete")
-                        mode = .info
-                    }
-                }
+                    await MainActor.run {
+                        isExporting = false
+                        
+                        
+                        switch result {
+                        case .noFolder:
+                            ToastManager.shared.show(style: .warning, message: "Specify a folder to export to")
+                        case .failure:
+                            ToastManager.shared.show(style: .error, message: "Error while exporting leads")
+                        case .success:
+                            ToastManager.shared.show(style: .success, message: "Export Complete")
+                            mode = .info
+                            viewModel.domain.getTagsCount()
+                        }
+                    }}
 
             }) {
                 HStack(spacing: 8) {

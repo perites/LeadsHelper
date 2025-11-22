@@ -17,7 +17,8 @@ enum Mode {
     case bulkImport
     case download(Bool, Int64?)
     case exclude(Bool, Int64?)
-
+    case history(Int64)
+    
     var name: String {
         switch self {
         case .info: return "Dashboard"
@@ -28,6 +29,7 @@ enum Mode {
         case .bulkImport: return "Bulk Import"
         case .download: return "Leads Download"
         case .exclude: return "Leads Exclude"
+        case .history: return "Imports History"
         case _: return "404"
             
         }
@@ -41,7 +43,7 @@ struct DomainDetailedView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            if domain.deleted {
+            if !domain.isActive {
                 DomainDeletedView()
             } else {
                 switch mode {
@@ -81,6 +83,9 @@ struct DomainDetailedView: View {
                         excludeFromAll: excludeAllTags,
                         selectedTagId: tagId
                     )
+                    
+                case .history(let tagId):
+                    DomainImportHistoryView(domain: domain, initialTagId: tagId)
                 }
             }
         }

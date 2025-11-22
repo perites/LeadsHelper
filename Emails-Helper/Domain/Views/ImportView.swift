@@ -102,7 +102,7 @@ struct DomainImportView: View {
                                 message: "Import Complete"
                             )
                         mode = .info
-                        domain.getTagsInfo()
+                        domain.updateTagInfo(tagId: selectedTagId, type: .count)
                     }
                 }
 

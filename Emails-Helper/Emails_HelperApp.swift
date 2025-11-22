@@ -9,6 +9,13 @@ import SwiftUI
 
 @main
 struct Emails_HelperApp: App {
+    init() {
+        Task {
+//            await DatabaseActor.shared.createTables()
+//            await DatabaseActor.shared.cleanupDatabase()
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             ToastContainerView {
