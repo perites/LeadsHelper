@@ -20,7 +20,7 @@ struct Emails_HelperApp: App {
     var body: some Scene {
         WindowGroup {
             ToastContainerView {
-                ContentView()
+                ContentView().preferredColorScheme(.dark)
             }
         }
     }
