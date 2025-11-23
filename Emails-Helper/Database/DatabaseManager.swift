@@ -17,12 +17,6 @@ import SQLite
         do {
             db = try DatabaseActor.databaseConnection()
             try db.run("PRAGMA foreign_keys = ON")
-            try db.execute("""
-                CREATE INDEX IF NOT EXISTS idx_leads_tagId ON leads(tagId);
-                CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email);
-                CREATE INDEX IF NOT EXISTS idx_leads_isActive ON leads(isActive);
-                CREATE INDEX IF NOT EXISTS idx_tags_domainId ON tags(domainId);
-            """)
         } catch {
             fatalError("Failed to initialize database: \(error)")
         }
@@ -44,10 +38,9 @@ import SQLite
             try fm.createDirectory(at: folder, withIntermediateDirectories: true)
         }
 
-//        let dbURL = folder.appendingPathComponent("emails-helper-db-LIVE.sqlite3")
-        let dbURL = folder.appendingPathComponent("emails-helper-db.sqlite3")
-        print(dbURL)
-
+        let dbURL = folder.appendingPathComponent("emails-helper-db-LIVE.sqlite3")
+//        let dbURL = folder.appendingPathComponent("emails-helper-db.sqlite3")
+        
         return try Connection(dbURL.path)
     }
 
@@ -59,10 +52,10 @@ import SQLite
 
             guard currentVersion < latestVersion else { return }
 
-            print("📦 Migrating database from v\(currentVersion) to v\(latestVersion)...")
+            print("Migrating database from v\(currentVersion) to v\(latestVersion)...")
 
             if currentVersion < 1 {
-                print("📦 Migrating to v1: Adding emailsCount to Imports...")
+                print("Migrating to v1: Adding emailsCount to Imports...")
 
                 do {
                     try db.run(ImportsTable.table.addColumn(ImportsTable.emailsAmount, defaultValue: 0))
@@ -83,18 +76,18 @@ import SQLite
                             try db.run(targetImport.update(ImportsTable.emailsAmount <- actualCount))
                         }
                     }
-                    print("✅ successfully calculated email counts for existing imports.")
+                    print("Successfully calculated email counts for existing imports.")
 
                 } catch {
-                    print("❌ Migration v3 failed: \(error)")
+                    print("Migration v1 failed: \(error)")
                 }
             }
 
             try db.run("PRAGMA user_version = \(latestVersion)")
-            print("✅ Migration successful.")
+            print("Migration successful.")
 
         } catch {
-            print("❌ Migration failed: \(error)")
+            print("Migration failed: \(error)")
         }
     }
 
@@ -104,6 +97,15 @@ import SQLite
         TagsTable.createTable(in: db)
         ImportsTable.createTable(in: db)
         ExportTable.createTable(in: db)
+        
+        
+        try? db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_leads_tagId ON leads(tagId);
+            CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email);
+            CREATE INDEX IF NOT EXISTS idx_leads_isActive ON leads(isActive);
+            CREATE INDEX IF NOT EXISTS idx_tags_domainId ON tags(domainId);
+        """)
+        
     }
 
     func cleanupDatabase() {
