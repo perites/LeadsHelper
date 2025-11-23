@@ -9,7 +9,6 @@ import SwiftUI
 
 struct DomainExportView: View {
     @StateObject var viewModel: ExportViewModel
-
     @Binding var mode: Mode
 
     @State private var isExporting: Bool = false
@@ -25,9 +24,6 @@ struct DomainExportView: View {
         VStack(alignment: .leading, spacing: 20) {
             HeaderView
             Divider()
-            Button("Test", action: {
-                isExporting = true
-            })
             ScrollView {
                 VStack(spacing: 12) {
                     ForEach($viewModel.tagsRequests) { $tagRequest in
@@ -122,8 +118,9 @@ struct DomainExportView: View {
     private struct TagRequestView: View {
         let tagName: String
         let availableLeadsCount: Int
+        
         @Binding var requestedAmount: Int?
-
+        
         var body: some View {
             HStack {
                 VStack(alignment: .leading) {
@@ -134,6 +131,7 @@ struct DomainExportView: View {
                     Text("Available Leads: \(availableLeadsCount)")
                         .font(.callout)
                         .foregroundColor(.gray)
+                                        
                 }
                 Spacer()
                 TextField("Amount", value: $requestedAmount, format: .number)
@@ -168,6 +166,7 @@ struct DomainExportView: View {
                         case .success:
                             ToastManager.shared.show(style: .success, message: "Export Complete")
                             mode = .info
+                            viewModel.domain.getLastExportRequest()
                             viewModel.domain.getTagsCount()
                         }
                     }}
@@ -183,7 +182,7 @@ struct DomainExportView: View {
                 }
                 .padding(.vertical, 4)
                 .padding(.horizontal, 6)
-                .background(.blue.opacity(0.3))
+                .background(.yellow.opacity(0.3))
                 .foregroundColor(.white)
                 .cornerRadius(8)
                 .shadow(radius: 2)

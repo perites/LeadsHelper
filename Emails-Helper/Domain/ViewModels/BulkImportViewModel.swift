@@ -96,7 +96,8 @@ class BulkImportViewModel: ObservableObject {
             let importId = await ImportsTable.addImport(
                 newName: importName,
                 newTagId: importFile.tagId!,
-                newType: 1
+                newType: 1,
+                newEmailsAmount: importFile.emails!.count
             )!
             
             await DatabaseActor.shared.addLeadsBulk(

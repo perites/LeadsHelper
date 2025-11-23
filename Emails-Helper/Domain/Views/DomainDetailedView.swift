@@ -18,6 +18,7 @@ enum Mode {
     case download(Bool, Int64?)
     case exclude(Bool, Int64?)
     case history(Int64)
+    case exportsHistory
     
     var name: String {
         switch self {
@@ -30,6 +31,7 @@ enum Mode {
         case .download: return "Leads Download"
         case .exclude: return "Leads Exclude"
         case .history: return "Imports History"
+        case .exportsHistory: return "Exports History"
         case _: return "404"
             
         }
@@ -52,9 +54,6 @@ struct DomainDetailedView: View {
                 case .edit:
                     DomainSettingsView(
                         domain: domain,
-                        editableDomain: DomainViewModel(
-                            from: domain.dbRow,
-                        ),
                         mode: $mode
                     )
                 case .importLeads(let tagId):
@@ -85,8 +84,12 @@ struct DomainDetailedView: View {
                     )
                     
                 case .history(let tagId):
-                    DomainImportHistoryView(domain: domain, initialTagId: tagId)
+                    DomainImportHistoryView(domain: domain, initialTagId: tagId, mode:$mode)
+                    
+                case .exportsHistory:
+                    DomainExportHistoryView(domain: domain, mode: $mode)
                 }
+            
             }
         }
         .padding()

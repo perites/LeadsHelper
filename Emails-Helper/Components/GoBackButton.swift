@@ -20,7 +20,7 @@ struct GoBackButtonView: View {
                     .padding(.vertical, 5)
                 Text("Back")
                     .font(.callout)
-            }.foregroundColor(.secondary)
+            }
         }
     }
 }

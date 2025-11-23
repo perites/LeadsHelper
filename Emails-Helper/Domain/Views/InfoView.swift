@@ -11,7 +11,6 @@ struct DomainInfoView: View {
     @ObservedObject var domain: DomainViewModel
     @Binding var mode: Mode
 
-    // 💡 State to manage renaming
     @State private var editedTagInfo: TagInfo? = nil
     @State private var newTagName: String = ""
     @State private var newIdealAmount: Int = 0
@@ -23,8 +22,6 @@ struct DomainInfoView: View {
             DomainHeader
             Divider()
             LeadsUsageBars
-//            Divider()
-//            FooterButtons
         }
     }
 
@@ -34,6 +31,7 @@ struct DomainInfoView: View {
             Spacer()
             Group {
                 ExportButton
+                StatisticsButton
                 BulkActionMenu
             }
             .font(.title3)
@@ -58,7 +56,7 @@ struct DomainInfoView: View {
                     Image(systemName: "arrow.clockwise.circle")
                 }
                 .contentShape(Rectangle())
-                
+
             }.buttonStyle(.plain)
                 .foregroundStyle(.secondary)
         }
@@ -92,6 +90,16 @@ struct DomainInfoView: View {
             .contentShape(Rectangle())
         }
     }
+    
+    
+    private var StatisticsButton: some View {
+        Button(action: { mode = .exportsHistory }) {
+            Image(systemName: "chart.xyaxis.line")
+            .foregroundColor(.yellow.opacity(1))
+            .padding(8)
+            .contentShape(Rectangle())
+        }
+    }
 
     private var BulkActionMenu: some View {
         Menu {
@@ -117,33 +125,21 @@ struct DomainInfoView: View {
                     icon: "plus.circle",
                     action: {
                         Task {
-                            let formatter = DateFormatter()
-                            formatter.dateFormat = "yyyy-MM-dd-HH:mm:ss"
-                            let dateString = formatter.string(from: Date())
-                            let newName = "New Tag \(dateString)"
-                            let createdTagId = await TagsTable
-                                .addTag(
-                                    newName: newName,
-                                    newDomainId: domain.id
-                                )
-
-                            guard let createdTagId else {
-                                ToastManager.shared
-                                    .show(
+                            let createdTagId = await domain.addTag()
+                            await MainActor.run {
+                                guard let createdTagId else {
+                                    ToastManager.shared.show(
                                         style: .error,
                                         message: "Tag creation failed"
                                     )
-                                return
+                                    return
+                                }
+
+                                ToastManager.shared.show(style: .success, message: "Tag created successfully")
+
+                                editedTagInfo = domain.tagsInfo.first { $0.id == createdTagId }
+                                focusedTagId = createdTagId
                             }
-                            ToastManager.shared.show(style: .success, message: "Tag created successfully")
-                            domain
-                                .addTagInfo(
-                                    tagId: createdTagId,
-                                    name: newName,
-                                    idealAmount: 0
-                                )
-                            editedTagInfo = domain.tagsInfo.first { $0.id == createdTagId }
-                            focusedTagId = createdTagId
                         }
                     }
                 )
@@ -177,10 +173,7 @@ struct DomainInfoView: View {
                     title: Text("Delete Tag?"),
                     message: Text("Are you sure you want to delete tag \(tag.name)?"),
                     primaryButton: .destructive(Text("Delete")) {
-                        Task {
-                            // This now has the correct tag.id
-                            await domain.deleteTag(tagId: tag.id)
-                        }
+                        domain.updateTagInfo(tagId: tag.id, type: .isActive)
                         ToastManager.shared.show(
                             style: .info,
                             message: "Tag \(tag.name) deleted"
@@ -303,14 +296,19 @@ struct DomainInfoView: View {
                 newIdealAmount = tagInfo.idealAmount // Pre-fill with current name
             }
 
-            Button("Save", action: {
-                editedTagInfo = nil
-                focusedTagId = nil
-                guard !newTagName.isEmpty else { return }
-                domain.updateTagInfo(tagId: tagInfo.id, type: .text(newTagName, newIdealAmount))
-                ToastManager.shared.show(style: .info, message: "Tag saved")
-            
-            })
+            Button(
+                "Save",
+                action: {
+                    editedTagInfo = nil
+                    focusedTagId = nil
+                    guard !newTagName.isEmpty else { return }
+                    domain.updateTagInfo(
+                        tagId: tagInfo.id,
+                        type: .basics(newTagName, newIdealAmount)
+                    )
+                    ToastManager.shared.show(style: .info, message: "Tag saved")
+                }
+            )
         }
     }
 
@@ -397,7 +395,7 @@ struct DomainInfoView: View {
                         .frame(width: unavailableWidth)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                     HStack {
-                        if domain.fetchTagsCountTask != nil || tagInfo.updateTask != nil{
+                        if domain.fetchTagsCountTask != nil || tagInfo.updateTask != nil {
                             PulsingDot().padding(.leading, 10)
                         } else {
                             Text(

@@ -7,14 +7,41 @@
 
 import SwiftUI
 
+class FakeDomainViewModel: ObservableObject, Identifiable {
+    let id: Int64
+
+    @Published var name: String
+    @Published var abbreviation: String
+    @Published var exportType: Int
+    @Published var saveFolder: URL?
+    @Published var useLimit: Int
+    @Published var globalUseLimit: Int
+
+    init(domain: DomainViewModel) {
+        self.id = domain.id
+        _name = .init(initialValue: domain.name)
+        _abbreviation = .init(initialValue: domain.abbreviation)
+        _exportType = .init(initialValue: domain.exportType)
+        _saveFolder = .init(initialValue: domain.saveFolder)
+        _useLimit = .init(initialValue: domain.useLimit)
+        _globalUseLimit = .init(initialValue: domain.globalUseLimit)
+    }
+}
+
 struct DomainSettingsView: View {
     @ObservedObject var domain: DomainViewModel
-    @ObservedObject var editableDomain: DomainViewModel
+    @ObservedObject var editableDomain: FakeDomainViewModel
 
     @Binding var mode: Mode
 
     @State private var isShowingFolderPicker = false
     @State private var isShowingDeleteAlert = false
+
+    init(domain: DomainViewModel, mode: Binding<Mode>) {
+        _domain = .init(wrappedValue: domain)
+        _editableDomain = .init(wrappedValue: FakeDomainViewModel(domain: domain))
+        _mode = mode
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -119,15 +146,12 @@ struct DomainSettingsView: View {
 
     private var SaveButton: some View {
         Button(
-            action: { Task {
-                let limitChanged = await domain.copyUpdates(from: editableDomain)
-                if limitChanged {
-                    domain.getTagsCount()
-                }
+            action: {
+                domain.copyUpdates(from: editableDomain)
                 ToastManager.shared.show(style: .info, message: "Domain \(domain.name) updated")
                 mode = .info
 
-            }}) {
+            }) {
                 HStack(spacing: 6) {
                     Image(systemName: "gear.badge.checkmark")
                         .resizable()
@@ -169,14 +193,9 @@ struct DomainSettingsView: View {
             .buttonStyle(PlainButtonStyle())
             .alert("Delete Domain?", isPresented: $isShowingDeleteAlert) {
                 Button("Delete", role: .none) {
-                    domain.isActive = false
-                    Task {
-                        await domain.delete()
-                        await MainActor.run {
-                            ToastManager.shared.show(style: .info, message: "Domain \(domain.name) deleted successfully")
-                            mode = .deleted
-                        }
-                    }
+                    domain.setInactive()
+                    ToastManager.shared.show(style: .info, message: "Domain \(domain.name) deleted successfully")
+                    mode = .deleted
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {

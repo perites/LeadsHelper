@@ -17,6 +17,7 @@ struct TagPickerView: View {
     @Binding var pickedTagId: Int64?
     
     let mode: TagPickerMode
+    var pickerName = "Select tag"
     
     var body: some View {
         switch mode {
@@ -35,7 +36,7 @@ struct TagPickerView: View {
     }
     
     var tagPicker: some View {
-        Picker("Select Tag:", selection: $pickedTagId) {
+        Picker(pickerName, selection: $pickedTagId) {
             Text("Select tag").tag(Int64?.none)
             ForEach(domain.tagsInfo) { tag in
                 Text(tag.name).tag(tag.id as Int64?)

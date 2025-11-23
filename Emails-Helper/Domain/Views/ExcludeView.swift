@@ -24,7 +24,8 @@ struct DomainExcludeView: View {
             TagPickerView(
                 domain: domain,
                 pickedTagId: $selectedTagId,
-                mode: .allowAll($excludeFromAll)
+                mode: .allowAll($excludeFromAll),
+                pickerName: "Exclude from:"
             )
             
             Divider()

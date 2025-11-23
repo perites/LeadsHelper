@@ -50,11 +50,59 @@ import SQLite
         return try Connection(dbURL.path)
     }
 
+    func migrate() {
+        do {
+            let currentVersion = try db.scalar("PRAGMA user_version") as? Int64 ?? 0
+
+            let latestVersion: Int64 = 1
+
+            guard currentVersion < latestVersion else { return }
+
+            print("📦 Migrating database from v\(currentVersion) to v\(latestVersion)...")
+
+            if currentVersion < 1 {
+                print("📦 Migrating to v1: Adding emailsCount to Imports...")
+
+                do {
+                    try db.run(ImportsTable.table.addColumn(ImportsTable.emailsAmount, defaultValue: 0))
+
+                    try db.transaction {
+                        let importIdCol = LeadsTable.importId
+                        let countExpression = LeadsTable.id.count
+
+                        let countsQuery = LeadsTable.table
+                            .select(importIdCol, countExpression)
+                            .group(importIdCol)
+
+                        for row in try db.prepare(countsQuery) {
+                            let targetImportId = row[importIdCol]
+                            let actualCount = row[countExpression]
+
+                            let targetImport = ImportsTable.table.filter(ImportsTable.id == targetImportId)
+                            try db.run(targetImport.update(ImportsTable.emailsAmount <- actualCount))
+                        }
+                    }
+                    print("✅ successfully calculated email counts for existing imports.")
+
+                } catch {
+                    print("❌ Migration v3 failed: \(error)")
+                }
+            }
+
+            try db.run("PRAGMA user_version = \(latestVersion)")
+            print("✅ Migration successful.")
+
+        } catch {
+            print("❌ Migration failed: \(error)")
+        }
+    }
+
     func createTables() {
         LeadsTable.createTable(in: db)
         DomainsTable.createTable(in: db)
         TagsTable.createTable(in: db)
         ImportsTable.createTable(in: db)
+        ExportTable.createTable(in: db)
     }
 
     func cleanupDatabase() {
@@ -97,6 +145,10 @@ import SQLite
         return try db.pluck(query)
     }
 
+    func dbCount(_ query: Table) throws -> Int {
+        return try db.scalar(query.count)
+    }
+
     func addLeadsBulk(newEmails: [String], newImportId: Int64, newTagId: Int64) {
         do {
             try db.transaction {
@@ -124,18 +176,14 @@ import SQLite
         let uniqueEmails = Set(emails)
         guard !uniqueEmails.isEmpty else { return }
 
-        // 1. Generate a random temp table name to avoid collisions
         let tempTableName = "temp_exclude_\(Int64.random(in: 1000 ... 9999))"
 
-        // 2. ENSURE CLEANUP: This runs no matter what happens (success or error)
         defer {
             try? db.run("DROP TABLE IF EXISTS \(tempTableName)")
         }
 
-        // 3. Create the temporary table
         try db.run("CREATE TEMPORARY TABLE \(tempTableName) (email TEXT PRIMARY KEY) WITHOUT ROWID;")
 
-        // 4. Bulk Insert the emails into the temp table (inside a transaction for speed)
         try db.transaction {
             let stmt = try db.prepare("INSERT OR IGNORE INTO \(tempTableName) (email) VALUES (?)")
             for email in uniqueEmails {
@@ -143,17 +191,13 @@ import SQLite
             }
         }
 
-        // 5. Construct the Update SQL
-        // Note: We write raw SQL here for clarity and performance on complex joins
         var whereClause = ""
         var bindings: [Binding?] = []
 
         if excludeFromAll {
-            // Filter by Domain: Tag must belong to this Domain
             whereClause = "tagId IN (SELECT id FROM tags WHERE domainId = ?)"
             bindings.append(domainId)
         } else {
-            // Filter by Specific Tag
             guard let tagId = selectedTagId else {
                 throw NSError(domain: "DbError", code: 400, userInfo: [NSLocalizedDescriptionKey: "Missing Tag ID"])
             }
@@ -169,85 +213,11 @@ import SQLite
                 AND email IN (SELECT email FROM \(tempTableName))
         """
 
-        // 6. Run the actual update
         try db.run(updateSQL, bindings)
 
         print("Actor: Exclude operation finished.")
     }
 }
-
-//
-//// SQLite Manager
-// class DatabaseManager {
-//    static let shared = DatabaseManager()
-//
-//    var db: Connection
-//
-//    init() {
-//        do {
-//            db = try DatabaseManager.databaseConnection()
-//        } catch {
-//            fatalError("Failed to initialize database: \(error)")
-//        }
-//    }
-//
-//    static func databaseConnection() throws -> Connection {
-//        let fm = FileManager.default
-//
-//        let appSupport = try fm.url(
-//            for: .applicationSupportDirectory,
-//            in: .userDomainMask,
-//            appropriateFor: nil,
-//            create: true
-//        )
-//
-//        let folder = appSupport.appendingPathComponent("EmailsHelper", isDirectory: true)
-//
-//        if !fm.fileExists(atPath: folder.path) {
-//            try fm.createDirectory(at: folder, withIntermediateDirectories: true)
-//        }
-//
-//        let dbURL = folder.appendingPathComponent("emails-helper-db-LIVE.sqlite3")
-////        let dbURL = folder.appendingPathComponent("emails-helper-db.sqlite3")
-//
-//        print(dbURL)
-//        return try Connection(dbURL.path)
-//    }
-// }
-
-//            try db.run("PRAGMA foreign_keys = ON")
-
-//            try db.run(LeadsTable.table.drop(ifExists: true))
-//            try db.run(TagsTable.table.drop(ifExists: true))
-//            try db.run(ImportsTable.table.drop(ifExists: true))
-//            try db.run(DomainsTable.table.drop(ifExists: true))
-//            print("Database cleaned")
-//
-//            LeadsTable.createTable(in: db)
-//            DomainsTable.createTable(in: db)
-//            TagsTable.createTable(in: db)
-//            ImportsTable.createTable(in: db)
-//
-//            //            try db.run("""
-//                CREATE INDEX IF NOT EXISTS idx_leads_tag_active
-//                ON Leads(tagId, isActive, email);
-//            """)
-//
-//
-//            try db.run("""
-//               CREATE INDEX IF NOT EXISTS idx_tags_domain_active
-//               ON Tags(domainId, isActive);
-//            """)
-
-//
-//            for row in try! db.prepare(TagsTable.table) {
-//                print(row[TagsTable.name])
-//                print(row[TagsTable.isActive])
-//            }
-
-//            for row in try db.prepare("SELECT email, lastUsedAt, typeof(lastUsedAt) FROM leads") {
-//                print(row)
-//            }
 
 enum TagsTable {
     static let table = Table("tags")
@@ -333,9 +303,6 @@ enum TagsTable {
                     id: row[id],
                     name: row[name],
                     idealAmount: row[idealAmount]
-//                    inactiveLeadsCount: Int((row[3] as? Int64) ?? 0),
-//                    activeLeadsCount: Int((row[4] as? Int64) ?? 0),
-//                    availableLeadsCount: Int((row[5] as? Int64) ?? 0)
                 )
                 results.append(info)
             }
@@ -355,6 +322,7 @@ enum ImportsTable {
     static let dateCreated = SQLite.Expression<Date>("dateCreated")
     static let type = SQLite.Expression<Int>("type")
     static let tagId = SQLite.Expression<Int64>("tagId")
+    static let emailsAmount = SQLite.Expression<Int>("emailsAmount")
 
     static func createTable(in db: Connection?) {
         guard let db else { return }
@@ -366,6 +334,8 @@ enum ImportsTable {
                     t.column(dateCreated)
                     t.column(type)
                     t.column(tagId)
+                    t.column(emailsAmount)
+
                     t.foreignKey(
                         tagId,
                         references: TagsTable.table,
@@ -379,13 +349,14 @@ enum ImportsTable {
         }
     }
 
-    static func addImport(newName: String, newTagId: Int64, newType: Int) async -> Int64? {
+    static func addImport(newName: String, newTagId: Int64, newType: Int, newEmailsAmount: Int) async -> Int64? {
         do {
             let insert = table.insert(
                 name <- newName,
                 dateCreated <- Date(),
                 type <- newType,
-                tagId <- newTagId
+                tagId <- newTagId,
+                emailsAmount <- newEmailsAmount
             )
 
             let rowId = try await DatabaseActor.shared.dbInsert(insert)
@@ -397,55 +368,183 @@ enum ImportsTable {
         }
     }
 
-    // Replace the old fetchImports function in 'ImportsTable' with this
-//    static func fetchImports(for selectedTagId: Int64, limit: Int, offset: Int) -> (imports: [ImportInfo], totalCount: Int) {
-//        let db = DatabaseManager.shared.db
-//        var results: [ImportInfo] = []
-//        var totalCount = 0
-//
-//        // This is a special expression to get the total count *before* limiting
-//        let totalCountExpr = Expression<Int64>("COUNT(*) OVER ()")
-//
-//        let query = table
-//            .select(
-//                table[id],
-//                table[name],
-//                table[dateCreated],
-//                table[type],
-//                table[tagId],
-//                LeadsTable.table[LeadsTable.id].count, // Lead count
-//                totalCountExpr // Total row count
-//            )
-//            .join(.leftOuter,
-//                  LeadsTable.table,
-//                  on: table[id] == LeadsTable.table[LeadsTable.importId])
-//            .filter(table[tagId] == selectedTagId)
-//            .group(table[id], table[name], table[dateCreated], table[type], table[tagId])
-//            .order(table[dateCreated].desc)
-//            .limit(limit, offset: offset) // Apply paging here
-//
-//        do {
-//            for row in try db.prepare(query) {
-//                let info = ImportInfo(
-//                    id: row[table[id]],
-//                    name: row[table[name]],
-//                    dateCreated: row[table[dateCreated]],
-//                    importType: ImportType(rawValue: row[table[type]]) ?? .unknown,
-//                    tagId: row[table[tagId]],
-//                    leadCount: row[LeadsTable.table[LeadsTable.id].count]
-//                )
-//                results.append(info)
-//
-//                // The totalCount will be the same for every row
-//                if totalCount == 0 {
-//                    totalCount = Int(row[totalCountExpr])
-//                }
-//            }
-//        } catch {
-//            print("❌ Failed to fetch paged imports: \(error)")
-//        }
-//        return (results, totalCount)
-//    }
+    static func fetchImports(for selectedTagId: Int64, limit: Int, offset: Int) async -> (imports: [ImportInfo], totalCount: Int) {
+        let countQuery = table.filter(tagId == selectedTagId)
+
+        let query = table
+            .select(
+                table[id],
+                table[name],
+                table[dateCreated],
+                table[type],
+                table[tagId],
+                table[emailsAmount]
+            )
+            .filter(table[tagId] == selectedTagId)
+            .group(table[id])
+            .order(table[dateCreated].desc)
+            .limit(limit, offset: offset)
+
+        do {
+            let totalCount = try await DatabaseActor.shared.dbCount(countQuery)
+
+            let rows = try await DatabaseActor.shared.dbFetch(query)
+
+            var results: [ImportInfo] = []
+
+            for row in rows {
+                let info = ImportInfo(
+                    id: row[table[id]],
+                    name: row[table[name]],
+                    dateCreated: row[table[dateCreated]],
+                    importType: ImportType(rawValue: row[table[type]])!,
+                    tagId: row[table[tagId]],
+                    leadCount: row[emailsAmount]
+                )
+                results.append(info)
+            }
+
+            return (results, totalCount)
+
+        } catch {
+            print("❌ Failed to fetch imports: \(error)")
+            return ([], 0)
+        }
+    }
+}
+
+enum ExportTable {
+    static let table = Table("exports")
+    static let id = SQLite.Expression<Int64>("id")
+    static let domainId = SQLite.Expression<Int64>("domainId")
+    static let dateCreated = SQLite.Expression<Date>("dateCreated")
+
+    static let fileName = SQLite.Expression<String>("fileName")
+    static let folderName = SQLite.Expression<String>("folderName")
+    static let isSeparateFiles = SQLite.Expression<Bool>("isSeparateFiles")
+
+    static let tagsRequests = SQLite.Expression<String>("tagsRequests")
+
+    static func createTable(in db: Connection?) {
+        guard let db else { return }
+        do {
+            try db.run(
+                table.create(ifNotExists: true) { t in
+                    t.column(id, primaryKey: .autoincrement)
+                    t.column(domainId)
+                    t.column(dateCreated)
+
+                    t.column(fileName)
+                    t.column(folderName)
+                    t.column(isSeparateFiles)
+
+                    t.column(tagsRequests)
+
+                    t.foreignKey(
+                        domainId,
+                        references: DomainsTable.table,
+                        DomainsTable.id,
+                        delete: .cascade
+                    )
+                })
+
+        } catch {
+            print("Error creating Exports table: \(error)")
+        }
+    }
+
+    static func addExport(domainId: Int64, exportRequest: ExportRequest) async -> Int64? {
+        do {
+            let insert = table.insert(
+                ExportTable.domainId <- domainId,
+                ExportTable.dateCreated <- Date(),
+                ExportTable.fileName <- exportRequest.fileName,
+                ExportTable.folderName <- exportRequest.folderName,
+                ExportTable.isSeparateFiles <- exportRequest.isSeparateFiles,
+                ExportTable.tagsRequests <- exportRequest.tagsJsonString
+            )
+
+            let rowId = try await DatabaseActor.shared.dbInsert(insert)
+            return rowId
+
+        } catch {
+            print("Failed to add import: \(error)")
+            return nil
+        }
+    }
+
+    static func getLastExport(domainId: Int64) async -> ExportRequest? {
+        let query = table
+            .filter(ExportTable.domainId == domainId)
+            .order(dateCreated.desc)
+            .limit(1)
+
+        do {
+            guard let row = try await DatabaseActor.shared.dbPluck(query) else {
+                return nil
+            }
+
+            let fileName = row[ExportTable.fileName]
+            let folderName = row[ExportTable.folderName]
+            let isSeparateFiles = row[ExportTable.isSeparateFiles]
+            let jsonString = row[ExportTable.tagsRequests]
+
+            let decoder = JSONDecoder()
+            let tagsData = jsonString.data(using: .utf8) ?? Data()
+            let tags = (try? decoder.decode([TagRequest].self, from: tagsData)) ?? []
+
+            return ExportRequest(
+                fileName: fileName,
+                folderName: folderName,
+                isSeparateFiles: isSeparateFiles,
+                tags: tags
+            )
+
+        } catch {
+            print("❌ Failed to fetch last export: \(error)")
+            return nil
+        }
+    }
+
+    static func fetchExports(domainId: Int64, limit: Int, offset: Int) async -> (items: [ExportHistoryItem], totalCount: Int) {
+        let countQuery = table.filter(ExportTable.domainId == domainId)
+
+        let query = table
+            .filter(ExportTable.domainId == domainId)
+            .order(dateCreated.desc)
+            .limit(limit, offset: offset)
+
+        do {
+            let totalCount = try await DatabaseActor.shared.dbCount(countQuery)
+
+            let rows = try await DatabaseActor.shared.dbFetch(query)
+
+            var results: [ExportHistoryItem] = []
+            let decoder = JSONDecoder()
+
+            for row in rows {
+                let jsonString = row[tagsRequests]
+                let tagsData = jsonString.data(using: .utf8) ?? Data()
+                let decodedTags = (try? decoder.decode([TagRequest].self, from: tagsData)) ?? []
+
+                let item = ExportHistoryItem(
+                    id: row[id],
+                    dateCreated: row[dateCreated],
+                    fileName: row[fileName],
+                    folderName: row[folderName],
+                    isSeparateFiles: row[isSeparateFiles],
+                    tags: decodedTags
+                )
+                results.append(item)
+            }
+
+            return (results, totalCount)
+
+        } catch {
+            print("❌ Failed to fetch exports: \(error)")
+            return ([], 0)
+        }
+    }
 }
 
 enum LeadsTable {
@@ -546,11 +645,6 @@ enum LeadsTable {
         return (domainCutoffString, globalCutoffString, currentTimestamp)
     }
 
-    
-    
-    
-    
-    
     static func getTagStats(
         tagId: Int64,
         domainId: Int64,
@@ -599,22 +693,18 @@ enum LeadsTable {
         }
     }
 
-    
-    
     static func getBatchTagStats(
         tagIds: [Int64],
         domainId: Int64,
         domainUseLimit: Int,
         globalUseLimit: Int
     ) async -> [Int64: (inactive: Int, active: Int, available: Int)] {
-        
         if tagIds.isEmpty { return [:] }
 
         let cutoffDates = getCutoffDates(domainUseLimit: domainUseLimit, globalUseLimit: globalUseLimit)
-        
+
         let placeholders = Array(repeating: "?", count: tagIds.count).joined(separator: ",")
-        
-       
+
         let sql = """
             \(recencyCteLogic)
             SELECT 
@@ -633,7 +723,7 @@ enum LeadsTable {
             WHERE L.tagId IN (\(placeholders))
             GROUP BY L.tagId
         """
-        
+
         var bindings: [Binding?] = [domainId, cutoffDates.globalCutoffString, cutoffDates.domainCutoffString]
         bindings.append(contentsOf: tagIds.map { $0 as Binding? })
 
@@ -641,25 +731,22 @@ enum LeadsTable {
 
         do {
             let rows = try await DatabaseActor.shared.dbPrepare(sql: sql, params: bindings)
-            
+
             for row in rows {
                 let id = row[0] as? Int64 ?? 0
                 let inactive = Int(row[1] as? Int64 ?? 0)
                 let active = Int(row[2] as? Int64 ?? 0)
                 let available = Int(row[3] as? Int64 ?? 0)
-                
+
                 results[id] = (inactive, active, available)
             }
         } catch {
             print("❌ Batch Stats Failed: \(error)")
         }
-        
+
         return results
     }
-    
-    
-    
-    
+
     static func getEmails(
         tagId: Int64,
         domainId: Int64,
@@ -713,91 +800,6 @@ enum LeadsTable {
             return []
         }
     }
-
-//    static func getEmails(
-//        with tagId: Int64,
-//        domainId: Int64,
-//        amount: Int,
-//        domainUseLimit: Int,
-//        globalUseLimit: Int
-//    ) async -> [String] {
-    ////        let db = DatabaseManager.shared.db
-//
-//        let domainCutoffDate = Calendar.current.date(byAdding: .day, value: -domainUseLimit, to: Date()) ?? Date.distantPast
-//        let globalCutoffDate = Calendar.current.date(byAdding: .day, value: -globalUseLimit, to: Date()) ?? Date.distantPast
-//
-//        let domainCutoffString = dateFormatter.string(from: domainCutoffDate)
-//        let globalCutoffString = dateFormatter.string(from: globalCutoffDate)
-//
-//        let currentTimestamp = dateFormatter.string(from: Date())
-//
-//        let combinedSQL = """
-//        UPDATE leads
-//        SET isActive = 0,
-//            lastUsedAt = ?
-//        WHERE id IN (
-//            WITH globalRecent AS (
-//                SELECT email, MAX(lastUsedAt) AS globalLastUsed
-//                FROM leads
-//                GROUP BY email
-//            ),
-//            domainRecent AS (
-//                SELECT l.email, MAX(l.lastUsedAt) AS domainLastUsed
-//                FROM leads l
-//                JOIN tags t ON l.tagId = t.id
-//                WHERE t.domainId = ?
-//                GROUP BY l.email
-//            )
-//            SELECT L.id
-//            FROM leads L
-//            JOIN tags T ON L.tagId = T.id
-//            LEFT JOIN globalRecent G ON L.email = G.email
-//            LEFT JOIN domainRecent D ON L.email = D.email
-//            WHERE L.tagId = ?
-//              AND L.isActive = 1
-//              AND (G.globalLastUsed < ? OR G.globalLastUsed IS NULL)
-//              AND (D.domainLastUsed < ? OR D.domainLastUsed IS NULL)
-//            ORDER BY L.randomOrder
-//            LIMIT ?
-//        )
-//        RETURNING email;
-//        """
-//
-//        var emails: [String] = []
-//
-//        do {
-//            let bindings: [Binding?] = [
-//                currentTimestamp,
-//                domainId,
-//                tagId,
-//                globalCutoffString,
-//                domainCutoffString,
-//                amount
-//            ]
-//
-//            // Now the call is clean and passes a single array argument
-//            let stmt = try await DatabaseActor.shared.dbPrepare(
-//                sql: combinedSQL,
-//                params: bindings
-//            )
-//
-//            for row in stmt {
-//                if let email = row[0] as? String {
-//                    emails.append(email)
-//                }
-//            }
-//
-//            if !emails.isEmpty {
-//                print("🧹 Fetched and deactivated \(emails.count) leads in one step.")
-//            }
-//
-//            return emails
-//
-//        } catch {
-//            print("❌ getEmails (combined query) failed:", error)
-//            return []
-//        }
-//    }
 }
 
 enum DomainsTable {
@@ -808,7 +810,6 @@ enum DomainsTable {
     static let abbreviation = SQLite.Expression<String>("abbreviation")
     static let exportType = SQLite.Expression<Int>("exportType")
     static let saveFolder = SQLite.Expression<Blob?>("saveFolder")
-    static let lastExportRequest = SQLite.Expression<String?>("lastExportRequest")
     static let useLimit = SQLite.Expression<Int>("useLimit")
     static let globalUseLimit = SQLite.Expression<Int>("globalUseLimit")
     static let isActive = SQLite.Expression<Bool>("isActive")
@@ -822,7 +823,6 @@ enum DomainsTable {
                     t.column(abbreviation)
                     t.column(exportType)
                     t.column(saveFolder)
-                    t.column(lastExportRequest)
                     t.column(useLimit)
                     t.column(globalUseLimit)
                     t.column(isActive)

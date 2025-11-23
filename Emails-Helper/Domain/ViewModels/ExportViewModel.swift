@@ -12,16 +12,73 @@ struct ExportRequest: Codable {
     let folderName: String
     let isSeparateFiles: Bool
     let tags: [TagRequest]
+
+    var jsonString: String {
+        let jsonTagsRequests = try? JSONEncoder().encode(self)
+        let jsonStringTagsRequests = String(
+            data: jsonTagsRequests ?? Data(),
+            encoding: .utf8
+        )!
+
+        return jsonStringTagsRequests
+    }
+
+    var tagsJsonString: String {
+        let jsonTagsRequests = try? JSONEncoder().encode(tags)
+        let jsonStringTagsRequests = String(
+            data: jsonTagsRequests ?? Data(),
+            encoding: .utf8
+        )!
+
+        return jsonStringTagsRequests
+    }
 }
 
 struct TagRequest: Identifiable, Codable, CustomStringConvertible {
-    let id = UUID()
+    var id = UUID()
     let tagId: Int64
     let tagName: String
     let tagCount: Int
 
     var requestedAmount: Int?
     var emails: [String] = []
+    var emailCount: Int?
+
+    init(tagId: Int64, tagName: String, tagCount: Int, requestedAmount: Int? = nil, emails: [String] = [], emailCount: Int? = nil) {
+        self.tagId = tagId
+        self.tagName = tagName
+        self.tagCount = tagCount
+        self.requestedAmount = requestedAmount
+        self.emails = emails
+        self.emailCount = emailCount
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, tagId, tagName, tagCount, requestedAmount
+        case emailCount
+    }
+
+    func encode(to encoder: Encoder) throws {        
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(tagId, forKey: .tagId)
+        try container.encode(tagName, forKey: .tagName)
+        try container.encode(tagCount, forKey: .tagCount)
+        try container.encode(requestedAmount, forKey: .requestedAmount)
+        try container.encode(emails.count, forKey: .emailCount)
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        tagId = try container.decode(Int64.self, forKey: .tagId)
+        tagName = try container.decode(String.self, forKey: .tagName)
+        tagCount = try container.decode(Int.self, forKey: .tagCount)
+        requestedAmount = try container.decodeIfPresent(Int.self, forKey: .requestedAmount)
+        emailCount = try container.decodeIfPresent(Int.self, forKey: .emailCount)
+        emails = []
+        
+    }
 
     var description: String {
         return "\(tagName)_\(formatNumber(requestedAmount ?? 0))"
@@ -84,7 +141,9 @@ class ExportViewModel: ObservableObject {
                     tagId: tag.id,
                     tagName: tag.name,
                     tagCount: tag.availableLeadsCount ?? 0,
-                    requestedAmount: previous?.requestedAmount
+                    requestedAmount: previous?.requestedAmount,
+                    emailCount: previous?.emailCount ?? 0
+                    
                 )
             }
         )
@@ -122,40 +181,25 @@ class ExportViewModel: ObservableObject {
 
         let fulfilledTagsRequests = await fulfillTagsRequests()
 
-        let lastExportRequest = ExportRequest(
-            fileName: fileName,
-            folderName: folderName,
-            isSeparateFiles: isSeparateFiles,
-            tags: tagsRequests
-        )
-
-        await MainActor.run {
-            Task{
-                await domain
-                    .updateLastExportRequest(newExportRequest: lastExportRequest)
-                
-            }
-
-            tagsRequests = fulfilledTagsRequests
-        }
+        tagsRequests = fulfilledTagsRequests
 
         if isSeparateFiles {
-            for tagsRequest in tagsRequests {
-                guard let requestedAmount = tagsRequest.requestedAmount, requestedAmount > 0 else {
+            for tagRequest in tagsRequests {
+                guard let requestedAmount = tagRequest.requestedAmount, requestedAmount > 0 else {
                     continue
                 }
 
                 let caluculatedFolderName = applyMergeTags(
                     to: folderName,
-                    with: tagsRequest
+                    with: tagRequest
                 )
 
                 let calculatedfileName = applyMergeTags(
                     to: fileName,
-                    with: tagsRequest
+                    with: tagRequest
                 )
 
-                let content = formatEmails(for: tagsRequest.emails)
+                let content = formatEmails(for: tagRequest.emails)
 
                 let subfolder = folder.appendingPathComponent("\(caluculatedFolderName)/")
                 ensureFolderExists(at: subfolder)
@@ -168,13 +212,27 @@ class ExportViewModel: ObservableObject {
         } else {
             let calculatedfileName = applyMergeTags(to: fileName)
 
-            let emails = tagsRequests.flatMap { $0.emails }
+            var emails = tagsRequests.flatMap { $0.emails }
+            emails.shuffle()
             let content = formatEmails(for: emails)
             let fileURL = folder.appendingPathComponent("\(calculatedfileName).csv")
 
             saveFile(content: content, path: fileURL)
         }
 
+        let lastExportRequest = ExportRequest(
+            fileName: fileName,
+            folderName: folderName,
+            isSeparateFiles: isSeparateFiles,
+            tags: tagsRequests
+        )
+        
+        
+        await ExportTable.addExport(domainId: domain.id,exportRequest: lastExportRequest)
+                
+                
+            
+        
         return .success
     }
 
@@ -189,9 +247,8 @@ class ExportViewModel: ObservableObject {
                 domainUseLimit: domain.useLimit,
                 globalUseLimit: domain.globalUseLimit,
             )
-            
+
             fulfilledTagsRequests[index].emails = result
-            
         }
 
         return fulfilledTagsRequests

@@ -21,9 +21,9 @@ struct DomainBulkImportView: View {
         VStack(alignment: .leading, spacing: 10) {
             ImportNameInputView
             Divider()
-            
+
             FilesImportView(viewModel: viewModel, domain: domain)
-            
+
             Divider()
             HStack {
                 GoBackButtonView(mode: $mode, goBackMode: .info)
@@ -34,7 +34,7 @@ struct DomainBulkImportView: View {
         }
         .loadingOverlay(isShowing: $isImporting, text: "Importing...")
     }
-       
+
     private var ImportNameInputView: some View {
         HStack {
             Text("Import Name:").font(.title3)
@@ -42,14 +42,13 @@ struct DomainBulkImportView: View {
                 .textFieldStyle(RoundedBorderTextFieldStyle())
         }
     }
-    
+
     private var ImportButton: some View {
         Button(
             action: {
                 Task { @MainActor in
                     isImporting = true
-                    
-                    
+
                     guard viewModel.importFiles.count > 0 else { return }
                     guard !importName.isEmpty else {
                         ToastManager.shared
@@ -61,12 +60,10 @@ struct DomainBulkImportView: View {
                         return
                     }
 
-                    
                     let result = await viewModel.importLeads(importName: importName)
-                                     
-                    
+
                     isImporting = false
-                    
+
                     switch result {
                     case .loading:
                         ToastManager.shared.show(style: .warning, message: "Wait for Leads to load")
@@ -76,7 +73,7 @@ struct DomainBulkImportView: View {
                         ToastManager.shared.show(style: .error, message: "Error while importing leads")
                     case .success:
                         domain.getTagsCount()
-                        
+
                         ToastManager.shared
                             .show(
                                 style: .success,
@@ -101,13 +98,13 @@ struct DomainBulkImportView: View {
             }
             .buttonStyle(PlainButtonStyle())
     }
-    
+
     private struct FilesImportView: View {
         @ObservedObject var viewModel: BulkImportViewModel
         @ObservedObject var domain: DomainViewModel
-        
+
         @State private var isFileImporterPresented = false
-        
+
         var body: some View {
             VStack {
                 HStack {
@@ -115,21 +112,21 @@ struct DomainBulkImportView: View {
                     Spacer()
                     SelectFilesButton
                 }
-                
+
                 SelectedFiles
             }
             .padding(10)
             .background(Color.gray.opacity(0.1))
             .cornerRadius(8)
         }
-        
+
         var SelectFilesButton: some View {
             Button(action: {
                 isFileImporterPresented.toggle()
             }) {
                 HStack(spacing: 4) {
                     Image(systemName: "folder.badge.person.crop")
-                    
+
                     Text("Select Files")
                 }
                 .font(.title3)
@@ -146,7 +143,7 @@ struct DomainBulkImportView: View {
                 }
             }
         }
-        
+
         var SelectedFiles: some View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
@@ -164,7 +161,6 @@ struct DomainBulkImportView: View {
             }
         }
 
-        // inside FilesImportView (replace selectedFile function)
         private struct SelectedFileRow: View {
             @ObservedObject var file: ImportFile
             @ObservedObject var domain: DomainViewModel

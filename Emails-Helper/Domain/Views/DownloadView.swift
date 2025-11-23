@@ -43,7 +43,8 @@ struct DomainDownloadView: View {
                     TagPickerView(
                         domain: domain,
                         pickedTagId: $selectedTagId,
-                        mode: .allowAll($downloadAllTags)
+                        mode: .allowAll($downloadAllTags),
+                        pickerName: "Dowload tag:"
                     )
                     Divider()
                     ActivitySelectionView

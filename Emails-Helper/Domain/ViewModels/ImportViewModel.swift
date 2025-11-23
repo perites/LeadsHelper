@@ -27,7 +27,8 @@ class ImportViewModel: ObservableObject {
         let importId = await ImportsTable.addImport(
             newName: importName,
             newTagId: tagId,
-            newType: inputType
+            newType: inputType,
+            newEmailsAmount: allEmails.count
         )!
         
         await DatabaseActor.shared.addLeadsBulk(

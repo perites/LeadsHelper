@@ -11,7 +11,8 @@ import SwiftUI
 struct Emails_HelperApp: App {
     init() {
         Task {
-//            await DatabaseActor.shared.createTables()
+            await DatabaseActor.shared.createTables()
+            await DatabaseActor.shared.migrate()
 //            await DatabaseActor.shared.cleanupDatabase()
         }
     }

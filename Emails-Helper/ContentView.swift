@@ -21,6 +21,7 @@ class DomainsViewModel: ObservableObject {
 
         for domain in result {
             domain.tagsInfo = await TagsTable.getTags(with: domain.id)
+            domain.getLastExportRequest()
         }
 
         for domain in result {
