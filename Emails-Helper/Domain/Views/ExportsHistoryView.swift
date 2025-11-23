@@ -20,7 +20,6 @@ struct DomainExportHistoryView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("View exports history for \(viewModel.domain.name)").font(.body)
     
-            
             Divider()
             
             ContentView
@@ -37,12 +36,12 @@ struct DomainExportHistoryView: View {
     private var ContentView: some View {
         ScrollView {
             LazyVStack(spacing: 10) {
-               if viewModel.exports.isEmpty {
+                if viewModel.exports.isEmpty {
                     Text("No exports found.")
-                       .font(.headline)
-                       .foregroundColor(.secondary)
-                       .frame(maxWidth: .infinity, alignment: .center)
-                       .padding(.top, 50)
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 50)
                    
                 } else {
                     ForEach(viewModel.exports) { item in
@@ -63,21 +62,19 @@ struct DomainExportHistoryView: View {
                 GoBackButtonView(mode: $mode, goBackMode: .info)
                 Spacer()
                 
-                
-                    Button(action: viewModel.loadMore) {
-                        HStack {
-                            Image(systemName: "10.arrow.trianglehead.clockwise")
-                            Text("Load More")
-                        }
-                        .font(.title3)
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 6)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
-                        .shadow(radius: 2)
+                Button(action: viewModel.loadMore) {
+                    HStack {
+                        Image(systemName: "10.arrow.trianglehead.clockwise")
+                        Text("Load More")
                     }
-                    .disabled(!viewModel.canLoadMore)
-                
+                    .font(.title3)
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 6)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+                    .shadow(radius: 2)
+                }
+                .disabled(!viewModel.canLoadMore)
             }
             
             Text("\(viewModel.exports.count) / \(viewModel.totalCount)")
@@ -87,7 +84,6 @@ struct DomainExportHistoryView: View {
         .padding(.top, 10)
     }
 }
-
 
 struct ExportRowView: View {
     let item: ExportHistoryItem
@@ -113,13 +109,12 @@ struct ExportRowView: View {
                         .font(.title2)
                         .foregroundColor(.yellow)
                     
-                    Text(item.fileName)
-                        .font(.headline)
-                        .lineLimit(1)
-                    
-                    
-                
-                    
+                    Text(
+                        item.isSeparateFiles ?
+                            "\(item.folderName.components(separatedBy: "$|-|-|$")[0])/\(item.fileName.components(separatedBy: "$|-|-|$")[0])" : item.fileName.components(separatedBy: "$|-|-|$")[0]
+                    )
+                    .font(.headline)
+                    .lineLimit(1)
                     
                     Spacer()
                     
@@ -128,7 +123,6 @@ struct ExportRowView: View {
                         .monospacedDigit()
                         .padding(.trailing, 20)
                     
-                    
                     Text(item.dateCreated.formatted(
                         .dateTime
                             .day(.twoDigits)
@@ -136,11 +130,8 @@ struct ExportRowView: View {
                             .year()
                             .hour().minute()
                     ))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    
-                    
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                 }
                 .contentShape(Rectangle())
             }
@@ -179,7 +170,7 @@ struct ExportRowView: View {
                                             (
                                                 tag.requestedAmount != nil && tag.emailCount ?? 0 < tag.requestedAmount!
                                             )
-                                            ? .red : .green
+                                                ? .red : .green
                                         )
                                 }
                             }
@@ -195,6 +186,5 @@ struct ExportRowView: View {
                 }
             }
         }
-       
     }
 }

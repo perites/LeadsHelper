@@ -126,8 +126,11 @@ class ExportViewModel: ObservableObject {
     init(domain: DomainViewModel) {
         _domain = .init(initialValue: domain)
 
-        _fileName = .init(initialValue: domain.lastExportRequest?.fileName ?? "")
-        _folderName = .init(initialValue: domain.lastExportRequest?.folderName ?? "")
+        _fileName = .init(
+            initialValue: domain.lastExportRequest?.fileName
+                .components(separatedBy: "$|-|-|$")[safe: 1] ?? ""
+        )
+        _folderName = .init(initialValue: domain.lastExportRequest?.folderName.components(separatedBy: "$|-|-|$")[safe: 1]  ?? "")
         _isSeparateFiles = .init(initialValue: domain.lastExportRequest?.isSeparateFiles ?? false)
 
         _tagsRequests = .init(initialValue:
@@ -219,8 +222,8 @@ class ExportViewModel: ObservableObject {
         }
 
         let lastExportRequest = ExportRequest(
-            fileName: applyMergeTags(to: fileName),
-            folderName: applyMergeTags(to: folderName),
+            fileName: "\(applyMergeTags(to: fileName))$|-|-|$\(fileName)",
+            folderName: "\(applyMergeTags(to: folderName))$|-|-|$\(folderName)",
             isSeparateFiles: isSeparateFiles,
             tags: tagsRequests
         )
@@ -299,5 +302,13 @@ class ExportViewModel: ObservableObject {
         } catch {
             print("Failed to save file: \(error)")
         }
+    }
+}
+
+
+
+extension Collection {
+    subscript (safe index: Index) -> Element? {
+        return indices.contains(index) ? self[index] : nil
     }
 }
