@@ -46,6 +46,7 @@ import SQLite
 
 //        let dbURL = folder.appendingPathComponent("emails-helper-db-LIVE.sqlite3")
         let dbURL = folder.appendingPathComponent("emails-helper-db.sqlite3")
+        print(dbURL)
 
         return try Connection(dbURL.path)
     }
@@ -179,7 +180,7 @@ import SQLite
         let tempTableName = "temp_exclude_\(Int64.random(in: 1000 ... 9999))"
 
         defer {
-            try? db.run("DROP TABLE IF EXISTS \(tempTableName)")
+            _ = try? db.run("DROP TABLE IF EXISTS \(tempTableName)")
         }
 
         try db.run("CREATE TEMPORARY TABLE \(tempTableName) (email TEXT PRIMARY KEY) WITHOUT ROWID;")
@@ -453,7 +454,7 @@ enum ExportTable {
         }
     }
 
-    static func addExport(domainId: Int64, exportRequest: ExportRequest) async -> Int64? {
+    @discardableResult static func addExport(domainId: Int64, exportRequest: ExportRequest) async -> Int64? {
         do {
             let insert = table.insert(
                 ExportTable.domainId <- domainId,

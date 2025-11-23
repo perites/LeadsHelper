@@ -58,7 +58,7 @@ struct TagRequest: Identifiable, Codable, CustomStringConvertible {
         case emailCount
     }
 
-    func encode(to encoder: Encoder) throws {        
+    func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encode(tagId, forKey: .tagId)
@@ -77,7 +77,6 @@ struct TagRequest: Identifiable, Codable, CustomStringConvertible {
         requestedAmount = try container.decodeIfPresent(Int.self, forKey: .requestedAmount)
         emailCount = try container.decodeIfPresent(Int.self, forKey: .emailCount)
         emails = []
-        
     }
 
     var description: String {
@@ -143,7 +142,6 @@ class ExportViewModel: ObservableObject {
                     tagCount: tag.availableLeadsCount ?? 0,
                     requestedAmount: previous?.requestedAmount,
                     emailCount: previous?.emailCount ?? 0
-                    
                 )
             }
         )
@@ -221,18 +219,14 @@ class ExportViewModel: ObservableObject {
         }
 
         let lastExportRequest = ExportRequest(
-            fileName: fileName,
-            folderName: folderName,
+            fileName: applyMergeTags(to: fileName),
+            folderName: applyMergeTags(to: folderName),
             isSeparateFiles: isSeparateFiles,
             tags: tagsRequests
         )
-        
-        
-        await ExportTable.addExport(domainId: domain.id,exportRequest: lastExportRequest)
-                
-                
-            
-        
+
+        await ExportTable.addExport(domainId: domain.id, exportRequest: lastExportRequest)
+
         return .success
     }
 
