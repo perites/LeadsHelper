@@ -70,6 +70,7 @@ struct ToastContainerView<Content: View>: View {
     var body: some View {
         ZStack {
             content
+            Spacer()
             VStack(spacing: 10) {
                 ForEach(manager.toasts.reversed()) { toast in
                     ToastView(toast: toast) {
@@ -77,16 +78,23 @@ struct ToastContainerView<Content: View>: View {
                     }
                     .transition(
                         .asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .move(edge: .trailing).combined(with: .opacity)
+                            insertion:
+                            .move(edge: .leading)
+                                .combined(with: .opacity),
+                            removal:
+                            .move(edge: .leading)
+                                .combined(with: .opacity)
                         )
                     )
                 }
-                Spacer()
             }
-            .padding(.top, 20)
-            .padding(.trailing, 20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .padding(.bottom, 20)
+            .padding(.leading, 20)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .bottomLeading
+            )
             .animation(.spring(response: 0.4, dampingFraction: 0.7), value: manager.toasts)
         }
     }
