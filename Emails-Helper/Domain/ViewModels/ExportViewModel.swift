@@ -297,9 +297,30 @@ class ExportViewModel: ObservableObject {
     }
 
     private func saveFile(content: String, path: URL) {
+        var finalURL = path
+        var counter = 1
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH-mm"
+        let timeString = formatter.string(from: Date())
+
+        let folder = path.deletingLastPathComponent()
+        let fileNameWithoutExtension = path.deletingPathExtension().lastPathComponent
+        let fileExtension = path.pathExtension
+
+        while FileManager.default.fileExists(atPath: finalURL.path) {
+            let newName = "\(fileNameWithoutExtension) (\(counter)-\(timeString))"
+
+            finalURL = folder
+                .appendingPathComponent(newName)
+                .appendingPathExtension(fileExtension)
+
+            counter += 1
+        }
+
         do {
-            try content.write(to: path, atomically: true, encoding: .utf8)
-            print("File saved at: \(path.path)")
+            try content.write(to: finalURL, atomically: true, encoding: .utf8)
+            print("File saved at: \(finalURL.path)")
         } catch {
             print("Failed to save file: \(error)")
         }
