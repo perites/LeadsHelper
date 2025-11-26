@@ -132,7 +132,7 @@ struct TextImportView: View {
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.4)))
             
             Text(
-                "Leads from files: \(viewModel.emailsFromText?.count.formatted(.number) ?? "Calculating...")"
+                "Leads from text: \(viewModel.emailsFromText?.count.formatted(.number) ?? "Calculating...")"
             )
             .padding()
             .font(.body)

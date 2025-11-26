@@ -59,6 +59,7 @@ struct DomainInfoView: View {
 
             }.buttonStyle(.plain)
                 .foregroundStyle(.secondary)
+                .disabled(domain.fetchTagsCountTask != nil)
         }
     }
 

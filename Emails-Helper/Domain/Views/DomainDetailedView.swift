@@ -19,7 +19,7 @@ enum Mode: Equatable {
     case exclude(Bool, Int64?)
     case history(Int64)
     case exportsHistory
-    
+
     var name: String {
         switch self {
         case .info: return "Dashboard"
@@ -35,7 +35,7 @@ enum Mode: Equatable {
         case _: return "404"
         }
     }
-    
+
     var transition: AnyTransition {
         switch self {
         case .edit:
@@ -55,13 +55,13 @@ enum Mode: Equatable {
                 insertion: .move(edge: .leading).combined(with: .opacity),
                 removal: .move(edge: .leading).combined(with: .opacity)
             )
-            
+
         case .download, .exclude:
             return .asymmetric(
                 insertion: .move(edge: .bottom).combined(with: .opacity),
                 removal: .move(edge: .bottom).combined(with: .opacity)
             )
-            
+
         default:
             return .opacity
         }
@@ -71,7 +71,12 @@ enum Mode: Equatable {
 struct DomainDetailedView: View {
     @ObservedObject var domain: DomainViewModel
 
-    @State private var mode: Mode = .info
+    @State private var mode: Mode
+
+    init(domain: DomainViewModel, initialMode: Mode = .info) {
+        self.domain = domain
+        _mode = State(initialValue: initialMode)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -121,7 +126,6 @@ struct DomainDetailedView: View {
                 }
             }
             .transition(mode.transition)
-            .id(mode.name)
         }
         .padding()
         .navigationTitle("\(domain.abbreviation) - \(mode.name)")

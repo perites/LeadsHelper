@@ -155,7 +155,7 @@ class DomainViewModel: ObservableObject, Identifiable {
                 
                 ToastManager.shared.show(
                     style: .info,
-                    message: "Tags Info loaded for \(self.name)"
+                    message: "Tags count loaded for \(self.name)"
                 )
             }
         }
