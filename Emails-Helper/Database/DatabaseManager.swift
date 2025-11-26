@@ -38,8 +38,8 @@ import SQLite
             try fm.createDirectory(at: folder, withIntermediateDirectories: true)
         }
 
-        let dbURL = folder.appendingPathComponent("emails-helper-db-LIVE.sqlite3")
-//        let dbURL = folder.appendingPathComponent("emails-helper-db.sqlite3")
+//        let dbURL = folder.appendingPathComponent("emails-helper-db-LIVE.sqlite3")
+        let dbURL = folder.appendingPathComponent("emails-helper-db.sqlite3")
 
         return try Connection(dbURL.path)
     }
