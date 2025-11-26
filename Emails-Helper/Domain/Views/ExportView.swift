@@ -21,7 +21,7 @@ struct DomainExportView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 15) {
             HeaderView
             Divider()
             ScrollView {
@@ -59,12 +59,16 @@ struct DomainExportView: View {
     }
 
     private var HeaderView: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 10) {
             FileNameInputView
-            SaveFolderView
-
             Toggle("Save each tag in separate file", isOn: $viewModel.isSeparateFiles)
                 .toggleStyle(.checkbox)
+            SaveFolderView
+            Text(
+                "Export Type: \(viewModel.domain.strExportType)"
+            )
+            .font(.caption)
+            .foregroundColor(.gray)
         }
     }
 
@@ -118,9 +122,9 @@ struct DomainExportView: View {
     private struct TagRequestView: View {
         let tagName: String
         let availableLeadsCount: Int
-        
+
         @Binding var requestedAmount: Int?
-        
+
         var body: some View {
             HStack {
                 VStack(alignment: .leading) {
@@ -131,7 +135,6 @@ struct DomainExportView: View {
                     Text("Available Leads: \(availableLeadsCount)")
                         .font(.callout)
                         .foregroundColor(.gray)
-                                        
                 }
                 Spacer()
                 TextField("Amount", value: $requestedAmount, format: .number)
@@ -156,8 +159,7 @@ struct DomainExportView: View {
                     let result = await viewModel.exportLeads()
                     await MainActor.run {
                         isExporting = false
-                        
-                        
+
                         switch result {
                         case .noFolder:
                             ToastManager.shared.show(style: .warning, message: "Specify a folder to export to")
@@ -169,7 +171,8 @@ struct DomainExportView: View {
                             viewModel.domain.getLastExportRequest()
                             viewModel.domain.getTagsCount()
                         }
-                    }}
+                    }
+                }
 
             }) {
                 HStack(spacing: 8) {

@@ -50,6 +50,17 @@ class DomainViewModel: ObservableObject, Identifiable {
     
     @Published var fetchTagsCountTask: Task<Void, Never>?
     
+    var strExportType: String {
+            switch exportType {
+            case 0: "Regular"
+            case 1: "Exact Target"
+            case 2: "Blueshift"
+            default:
+                "Unknown"
+            }
+        }
+    
+    
     init(from dbRow: Row) {
         self.id = dbRow[DomainsTable.id]
         _name = .init(initialValue: dbRow[DomainsTable.name])

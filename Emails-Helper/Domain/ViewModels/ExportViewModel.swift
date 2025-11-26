@@ -130,8 +130,8 @@ class ExportViewModel: ObservableObject {
             initialValue: domain.lastExportRequest?.fileName
                 .components(separatedBy: "$|-|-|$")[safe: 1] ?? "%d-abrr% - %day%.%month% - %t-name%"
         )
-        _folderName = .init(initialValue: domain.lastExportRequest?.folderName.components(separatedBy: "$|-|-|$")[safe: 1]  ?? "%d-abrr% - %day%.%month%")
-        
+        _folderName = .init(initialValue: domain.lastExportRequest?.folderName.components(separatedBy: "$|-|-|$")[safe: 1] ?? "%d-abrr% - %day%.%month%")
+
         _isSeparateFiles = .init(initialValue: domain.lastExportRequest?.isSeparateFiles ?? false)
 
         _tagsRequests = .init(initialValue:
@@ -306,10 +306,8 @@ class ExportViewModel: ObservableObject {
     }
 }
 
-
-
 extension Collection {
-    subscript (safe index: Index) -> Element? {
+    subscript(safe index: Index) -> Element? {
         return indices.contains(index) ? self[index] : nil
     }
 }
