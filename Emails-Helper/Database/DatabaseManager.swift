@@ -38,9 +38,9 @@ import SQLite
             try fm.createDirectory(at: folder, withIntermediateDirectories: true)
         }
 
-//        let dbURL = folder.appendingPathComponent("emails-helper-db-LIVE.sqlite3")
-        let dbURL = folder.appendingPathComponent("emails-helper-db.sqlite3")
-        
+        let dbURL = folder.appendingPathComponent("emails-helper-db-LIVE.sqlite3")
+//        let dbURL = folder.appendingPathComponent("emails-helper-db.sqlite3")
+
         return try Connection(dbURL.path)
     }
 
@@ -48,7 +48,7 @@ import SQLite
         do {
             let currentVersion = try db.scalar("PRAGMA user_version") as? Int64 ?? 0
 
-            let latestVersion: Int64 = 1
+            let latestVersion: Int64 = 2
 
             guard currentVersion < latestVersion else { return }
 
@@ -83,6 +83,25 @@ import SQLite
                 }
             }
 
+            if currentVersion < 2 {
+                print("Migrating to v1: Adding exportId to Leads...")
+
+                do {
+                    try db
+                        .run(
+                            LeadsTable.table
+                                .addColumn(
+                                    LeadsTable.exportId
+                                )
+                        )
+
+                    print("Successfully added exportId to leads.")
+
+                } catch {
+                    print("Migration v2 failed: \(error)")
+                }
+            }
+
             try db.run("PRAGMA user_version = \(latestVersion)")
             print("Migration successful.")
 
@@ -97,15 +116,13 @@ import SQLite
         TagsTable.createTable(in: db)
         ImportsTable.createTable(in: db)
         ExportTable.createTable(in: db)
-        
-        
+
         try? db.execute("""
             CREATE INDEX IF NOT EXISTS idx_leads_tagId ON leads(tagId);
             CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email);
             CREATE INDEX IF NOT EXISTS idx_leads_isActive ON leads(isActive);
             CREATE INDEX IF NOT EXISTS idx_tags_domainId ON tags(domainId);
         """)
-        
     }
 
     func cleanupDatabase() {
@@ -256,13 +273,13 @@ enum TagsTable {
         }
     }
 
-    static func addTag(newDomainId: Int64) async -> (createdTagId:Int64?, newName: String ){
+    static func addTag(newDomainId: Int64) async -> (createdTagId: Int64?, newName: String) {
         do {
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyy-MM-dd-HH:mm:ss"
             let dateString = formatter.string(from: Date())
             let newName = "New Tag \(dateString)"
-            
+
             let insert = table.insert(
                 name <- newName,
                 domainId <- newDomainId,
@@ -461,7 +478,7 @@ enum ExportTable {
         }
     }
 
-    @discardableResult static func addExport(domainId: Int64, exportRequest: ExportRequest) async -> Int64? {
+    static func addExport(domainId: Int64, exportRequest: ExportRequest) async -> Int64? {
         do {
             let insert = table.insert(
                 ExportTable.domainId <- domainId,
@@ -478,6 +495,22 @@ enum ExportTable {
         } catch {
             print("Failed to add import: \(error)")
             return nil
+        }
+    }
+
+    static func updateExport(id: Int64, finalRequest: ExportRequest) async {
+        let row = table.filter(self.id == id)
+        do {
+            // Update all the fields that might have changed after processing
+            let update = row.update(
+                fileName <- finalRequest.fileName,
+                folderName <- finalRequest.folderName,
+                isSeparateFiles <- finalRequest.isSeparateFiles,
+                tagsRequests <- finalRequest.tagsJsonString
+            )
+            try await DatabaseActor.shared.dbUpdate(update)
+        } catch {
+            print("❌ Failed to update export: \(error)")
         }
     }
 
@@ -568,6 +601,7 @@ enum LeadsTable {
     static let randomOrder = SQLite.Expression<Double>("randomOrder")
 
     static let lastUsedAt = SQLite.Expression<Date?>("lastUsedAt")
+    static let exportId = SQLite.Expression<Int64?>("exportId")
 
     static func createTable(in db: Connection?) {
         guard let db else { return }
@@ -584,6 +618,7 @@ enum LeadsTable {
                     t.column(randomOrder)
 
                     t.column(lastUsedAt)
+                    t.column(exportId)
 
                     t.foreignKey(
                         tagId,
@@ -596,6 +631,13 @@ enum LeadsTable {
                         importId,
                         references: ImportsTable.table,
                         ImportsTable.id,
+                        delete: .cascade
+                    )
+
+                    t.foreignKey(
+                        exportId,
+                        references: ExportTable.table,
+                        ExportTable.id,
                         delete: .cascade
                     )
 
@@ -760,14 +802,16 @@ enum LeadsTable {
         domainId: Int64,
         amount: Int,
         domainUseLimit: Int,
-        globalUseLimit: Int
+        globalUseLimit: Int,
+        exportId: Int64
     ) async -> [String] {
         let cutoffDates = getCutoffDates(domainUseLimit: domainUseLimit, globalUseLimit: globalUseLimit)
 
         let updateSQL = """
             UPDATE leads
             SET isActive = 0,
-                lastUsedAt = ?
+                lastUsedAt = ?,
+                exportId = ?
             WHERE id IN (
                 \(recencyCteLogic)
                 SELECT L.id
@@ -780,6 +824,7 @@ enum LeadsTable {
 
         let bindings: [Binding?] = [
             cutoffDates.nowString,
+            exportId,
             domainId,
             tagId,
             cutoffDates.globalCutoffString,
@@ -862,9 +907,9 @@ enum DomainsTable {
                 isActive <- true
             )
             let rowId = try await DatabaseActor.shared.dbInsert(insert)
-            
+
             _ = await TagsTable.addTag(newDomainId: rowId)
-            
+
             return rowId
 
         } catch {

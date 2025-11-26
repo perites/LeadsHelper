@@ -181,7 +181,18 @@ class ExportViewModel: ObservableObject {
             return .noFolder
         }
 
-        let fulfilledTagsRequests = await fulfillTagsRequests()
+        let draftRequest = ExportRequest(
+            fileName: "Processing...",
+            folderName: "Processing...",
+            isSeparateFiles: isSeparateFiles,
+            tags: tagsRequests // Initial state (requested amounts)
+        )
+
+        guard let exportId = await ExportTable.addExport(domainId: domain.id, exportRequest: draftRequest) else {
+            return .failure
+        }
+
+        let fulfilledTagsRequests = await fulfillTagsRequests(exportId: exportId)
 
         tagsRequests = fulfilledTagsRequests
 
@@ -222,19 +233,19 @@ class ExportViewModel: ObservableObject {
             saveFile(content: content, path: fileURL)
         }
 
-        let lastExportRequest = ExportRequest(
+        let finalRequest = ExportRequest(
             fileName: "\(applyMergeTags(to: fileName))$|-|-|$\(fileName)",
             folderName: "\(applyMergeTags(to: folderName))$|-|-|$\(folderName)",
             isSeparateFiles: isSeparateFiles,
-            tags: tagsRequests
+            tags: tagsRequests // Now contains the actual emails/counts
         )
 
-        await ExportTable.addExport(domainId: domain.id, exportRequest: lastExportRequest)
+        await ExportTable.updateExport(id: exportId, finalRequest: finalRequest)
 
         return .success
     }
 
-    func fulfillTagsRequests() async -> [TagRequest] {
+    func fulfillTagsRequests(exportId: Int64) async -> [TagRequest] {
         var fulfilledTagsRequests = tagsRequests
 
         for (index, tagRequest) in tagsRequests.enumerated() {
@@ -244,6 +255,7 @@ class ExportViewModel: ObservableObject {
                 amount: tagRequest.requestedAmount ?? 0,
                 domainUseLimit: domain.useLimit,
                 globalUseLimit: domain.globalUseLimit,
+                exportId: exportId
             )
 
             fulfilledTagsRequests[index].emails = result
@@ -305,11 +317,11 @@ class ExportViewModel: ObservableObject {
             print("Failed to save file: \(error)")
         }
     }
-    
+
     static func ensureNameIsUnique(for path: URL) -> URL {
         var finalURL = path
         var counter = 1
-        
+
         let formatter = DateFormatter()
         formatter.dateFormat = "HH-mm"
         let timeString = formatter.string(from: Date())
@@ -327,9 +339,8 @@ class ExportViewModel: ObservableObject {
 
             counter += 1
         }
-        
-        return finalURL
 
+        return finalURL
     }
 }
 

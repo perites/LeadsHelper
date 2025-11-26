@@ -105,20 +105,22 @@ struct ExportRowView: View {
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                     
                     // Icon
+                    
                     Image(systemName: item.isSeparateFiles ? "folder.fill" : "doc.text.fill")
                         .font(.title2)
                         .foregroundColor(.yellow)
-                    
-                    Text(
-                        item.isSeparateFiles ?
-                            "\(item.folderName.components(separatedBy: "$|-|-|$")[0])/\(item.fileName.components(separatedBy: "$|-|-|$")[0])" : item.fileName.components(separatedBy: "$|-|-|$")[0]
-                    )
-                    .font(.headline)
-                    .lineLimit(1)
-                    
+                       
+                    HStack {
+                        Text(
+                            item.isSeparateFiles ?
+                                "\(item.folderName.components(separatedBy: "$|-|-|$")[0])/\(item.fileName.components(separatedBy: "$|-|-|$")[0])" : item.fileName.components(separatedBy: "$|-|-|$")[0]
+                        )
+                        .font(.headline)
+                        .lineLimit(1)
+                        Text("(id: \(item.id))").foregroundColor(.gray)
+                    }
                     Spacer()
                     
-                    // Total Count
                     Text("\(item.totalEmailsCount)")
                         .monospacedDigit()
                         .padding(.trailing, 20)

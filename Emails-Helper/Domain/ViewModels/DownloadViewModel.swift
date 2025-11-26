@@ -24,6 +24,7 @@ enum DownloadField: CaseIterable, Identifiable {
     case tagName
     case importName
     case dateImported
+    case exportId
 
     var id: String { label }
 
@@ -35,6 +36,7 @@ enum DownloadField: CaseIterable, Identifiable {
         case .tagName: return "Tag Name"
         case .importName: return "Import Name"
         case .dateImported: return "Date Imported"
+        case .exportId: return "Export ID"
         }
     }
 
@@ -46,6 +48,7 @@ enum DownloadField: CaseIterable, Identifiable {
         case .tagName: return TagsTable.table[TagsTable.name]
         case .importName: return ImportsTable.table[ImportsTable.name]
         case .dateImported: return ImportsTable.table[ImportsTable.dateCreated]
+        case .exportId: return LeadsTable.table[LeadsTable.exportId]
         }
     }
 
@@ -68,6 +71,12 @@ enum DownloadField: CaseIterable, Identifiable {
         case .dateImported:
             let date = row[expression as! SQLite.Expression<Date>]
             return dateFormatter.string(from: date)
+
+        case .exportId:
+            let id = row[expression as! SQLite.Expression<Int64?>]
+            guard let id else { return "No export yet" }
+
+            return "\(id)"
         }
     }
 }
@@ -79,7 +88,6 @@ class DownloadViewModel: ObservableObject {
     }
 
     func downloadLeads(domainId: Int64, fileURL: URL, fieldsToInclude: Set<DownloadField>, downloadAllTags: Bool, selectedTagId: Int64?, activityState: ActivityState) async -> DownloadResult {
-
         let columns = fieldsToInclude.map(\.expression)
         let fieldsToInclude = fieldsToInclude.map { field in
             (label: field.label, extract: field.extract)
@@ -118,7 +126,7 @@ class DownloadViewModel: ObservableObject {
         do {
             var dataFrame = DataFrame()
 
-            for row in try await DatabaseActor.shared.dbFetch(query){
+            for row in try await DatabaseActor.shared.dbFetch(query) {
                 for field in fieldsToInclude {
                     fieldsValues[field.label]?
                         .append(field.extract(row))

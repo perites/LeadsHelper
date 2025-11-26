@@ -24,9 +24,9 @@ class DomainsViewModel: ObservableObject {
             domain.getLastExportRequest()
         }
 
-//        for domain in result {
-//            domain.getTagsCount()
-//        }
+        for domain in result {
+            domain.getTagsCount()
+        }
 
         guard !Task.isCancelled else { return }
         await MainActor.run {
