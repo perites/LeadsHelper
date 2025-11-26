@@ -129,8 +129,10 @@ class DownloadViewModel: ObservableObject {
                 let values = fieldsValues[field.label] ?? []
                 dataFrame.append(column: Column(name: field.label, contents: values))
             }
-
-            try dataFrame.writeCSV(to: fileURL)
+            let finalFileUrl = await ExportViewModel.ensureNameIsUnique(
+                for: fileURL
+            )
+            try dataFrame.writeCSV(to: finalFileUrl)
             return .success
 
         } catch {

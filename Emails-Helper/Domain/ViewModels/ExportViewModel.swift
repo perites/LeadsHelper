@@ -297,6 +297,16 @@ class ExportViewModel: ObservableObject {
     }
 
     private func saveFile(content: String, path: URL) {
+        let finalURL = ExportViewModel.ensureNameIsUnique(for: path)
+        do {
+            try content.write(to: finalURL, atomically: true, encoding: .utf8)
+            print("File saved at: \(finalURL.path)")
+        } catch {
+            print("Failed to save file: \(error)")
+        }
+    }
+    
+    static func ensureNameIsUnique(for path: URL) -> URL {
         var finalURL = path
         var counter = 1
         
@@ -317,13 +327,9 @@ class ExportViewModel: ObservableObject {
 
             counter += 1
         }
+        
+        return finalURL
 
-        do {
-            try content.write(to: finalURL, atomically: true, encoding: .utf8)
-            print("File saved at: \(finalURL.path)")
-        } catch {
-            print("Failed to save file: \(error)")
-        }
     }
 }
 
