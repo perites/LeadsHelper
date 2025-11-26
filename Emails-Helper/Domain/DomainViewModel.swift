@@ -221,15 +221,11 @@ class DomainViewModel: ObservableObject, Identifiable {
     }
     
     func addTag() async -> Int64? {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd-HH:mm:ss"
-        let dateString = formatter.string(from: Date())
-        let newName = "New Tag \(dateString)"
-        let createdTagId = await TagsTable.addTag(newName: newName, newDomainId: id)
-        guard let createdTagId else { return nil }
+        let result = await TagsTable.addTag(newDomainId: id)
+        guard let createdTagId = result.createdTagId else { return nil }
         
         await MainActor.run {
-            tagsInfo.append(TagInfo(id: createdTagId, name: newName, idealAmount: 0))
+            tagsInfo.append(TagInfo(id: createdTagId, name: result.newName, idealAmount: 0))
             tagsInfo = tagsInfo.sorted { $0.name < $1.name }
         }
         return createdTagId

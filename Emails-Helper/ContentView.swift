@@ -41,7 +41,9 @@ class DomainsViewModel: ObservableObject {
         let rowId = await DomainsTable.addDomain(newName: "New Domain \(dateString)")
         guard let rowId else { return nil }
         let domainRow = await DomainsTable.findById(id: rowId)!
-        return DomainViewModel(from: domainRow)
+        let domain = DomainViewModel(from: domainRow)
+        domain.tagsInfo = await TagsTable.getTags(with: domain.id)
+        return domain
     }
 }
 

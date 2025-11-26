@@ -256,8 +256,13 @@ enum TagsTable {
         }
     }
 
-    static func addTag(newName: String, newDomainId: Int64) async -> Int64? {
+    static func addTag(newDomainId: Int64) async -> (createdTagId:Int64?, newName: String ){
         do {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd-HH:mm:ss"
+            let dateString = formatter.string(from: Date())
+            let newName = "New Tag \(dateString)"
+            
             let insert = table.insert(
                 name <- newName,
                 domainId <- newDomainId,
@@ -266,11 +271,11 @@ enum TagsTable {
             )
 
             let rowId = try await DatabaseActor.shared.dbInsert(insert)
-            return rowId
+            return (rowId, newName)
 
         } catch {
             print("Failed to add tag: \(error)")
-            return nil
+            return (nil, "")
         }
     }
 
@@ -857,6 +862,9 @@ enum DomainsTable {
                 isActive <- true
             )
             let rowId = try await DatabaseActor.shared.dbInsert(insert)
+            
+            _ = await TagsTable.addTag(newDomainId: rowId)
+            
             return rowId
 
         } catch {
