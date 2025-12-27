@@ -13,7 +13,6 @@ struct Emails_HelperApp: App {
         Task {
             await DatabaseActor.shared.createTables()
             await DatabaseActor.shared.migrate()
-//            await DatabaseActor.shared.cleanupDatabase()
         }
     }
 

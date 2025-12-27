@@ -37,8 +37,7 @@ import SQLite
         if !fm.fileExists(atPath: folder.path) {
             try fm.createDirectory(at: folder, withIntermediateDirectories: true)
         }
-
-//        let dbURL = folder.appendingPathComponent("emails-helper-db-LIVE.sqlite3")
+//        let dbURL = folder.appendingPathComponent("emails-helper-db-TEST.sqlite3")
         let dbURL = folder.appendingPathComponent("emails-helper-db.sqlite3")
 
         return try Connection(dbURL.path)
@@ -122,6 +121,9 @@ import SQLite
             CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email);
             CREATE INDEX IF NOT EXISTS idx_leads_isActive ON leads(isActive);
             CREATE INDEX IF NOT EXISTS idx_tags_domainId ON tags(domainId);
+            CREATE INDEX IF NOT EXISTS idx_leads_tag_active ON leads(tagId, isActive);
+            CREATE INDEX IF NOT EXISTS idx_leads_email_lastused ON leads(email, lastUsedAt);
+            CREATE INDEX IF NOT EXISTS idx_tags_domain ON tags(id, domainId);
         """)
     }
 
@@ -320,7 +322,7 @@ enum TagsTable {
         let filter = TagsTable.table.filter(
             (TagsTable.domainId == domainId) &&
                 (TagsTable.isActive == isActive)
-        )
+        ).order(TagsTable.name)
         do {
             var results: [TagInfo] = []
             for row in try await DatabaseActor.shared.dbFetch(filter) {
@@ -650,36 +652,6 @@ enum LeadsTable {
         }
     }
 
-    private static var recencyCteLogic: String {
-        """
-        WITH globalRecent AS (
-            SELECT email, MAX(lastUsedAt) AS globalLastUsed
-            FROM leads
-            GROUP BY email
-        ),
-        domainRecent AS (
-            SELECT l.email, MAX(l.lastUsedAt) AS domainLastUsed
-            FROM leads l
-            JOIN tags t ON l.tagId = t.id
-            WHERE t.domainId = ?
-            GROUP BY l.email
-        )
-        """
-    }
-
-    private static var validLeadsWhereLogic: String {
-        """
-        FROM leads L
-        JOIN tags T ON L.tagId = T.id
-        LEFT JOIN globalRecent G ON L.email = G.email
-        LEFT JOIN domainRecent D ON L.email = D.email
-        WHERE L.tagId = ?
-          AND L.isActive = 1
-          AND (G.globalLastUsed < ? OR G.globalLastUsed IS NULL)
-          AND (D.domainLastUsed < ? OR D.domainLastUsed IS NULL)
-        """
-    }
-
     static func getCutoffDates(domainUseLimit: Int, globalUseLimit: Int) -> (
         domainCutoffString: String,
         globalCutoffString: String,
@@ -695,107 +667,23 @@ enum LeadsTable {
         return (domainCutoffString, globalCutoffString, currentTimestamp)
     }
 
-    static func getTagStats(
-        tagId: Int64,
-        domainId: Int64,
-        domainUseLimit: Int,
-        globalUseLimit: Int
-    ) async -> (
-        inactiveLeadsCount: Int,
-        activeLeadsCount: Int,
-        availableLeadsCount: Int
-    ) {
-        let cutoffDates = getCutoffDates(domainUseLimit: domainUseLimit, globalUseLimit: globalUseLimit)
-
-        let sql = """
-            \(recencyCteLogic)
-            SELECT 
-                (SELECT COUNT(*) FROM leads WHERE tagId = ? AND isActive = 0) as inactiveCount,
-                (SELECT COUNT(*) FROM leads WHERE tagId = ? AND isActive = 1) as activeLeadsCount,
-                (SELECT COUNT(*) \(validLeadsWhereLogic)) as availableLeadsCount
+    private static var notUsedRecentlyLogic: String {
         """
-
-        let bindings: [Binding?] = [
-            domainId,
-            tagId,
-            tagId,
-            tagId,
-            cutoffDates.globalCutoffString,
-            cutoffDates.domainCutoffString,
-        ]
-
-        do {
-            let statement = try await DatabaseActor.shared.dbPrepare(
-                sql: sql,
-                params: bindings
+        AND NOT EXISTS (
+            SELECT 1 
+            FROM leads Hl
+            JOIN tags Ht ON Hl.tagId = Ht.id
+            WHERE Hl.email = L.email
+            AND (
+                (Ht.domainId != ? AND Hl.lastUsedAt >= ?) -- Rule 1: External Usage (Global Limit)
+                OR
+                (Ht.domainId = ?  AND Hl.lastUsedAt >= ?) -- Rule 2: Internal Usage (Domain Limit)
             )
-            guard let row = statement.makeIterator().next() else { return (0, 0, 0) }
-
-            let inactive = Int(row[0] as? Int64 ?? 0)
-            let active = Int(row[1] as? Int64 ?? 0)
-            let available = Int(row[2] as? Int64 ?? 0)
-
-            return (inactive, active, available)
-
-        } catch {
-            print("❌ getStats failed:", error)
-            return (0, 0, 0)
-        }
-    }
-
-    static func getBatchTagStats(
-        tagIds: [Int64],
-        domainId: Int64,
-        domainUseLimit: Int,
-        globalUseLimit: Int
-    ) async -> [Int64: (inactive: Int, active: Int, available: Int)] {
-        if tagIds.isEmpty { return [:] }
-
-        let cutoffDates = getCutoffDates(domainUseLimit: domainUseLimit, globalUseLimit: globalUseLimit)
-
-        let placeholders = Array(repeating: "?", count: tagIds.count).joined(separator: ",")
-
-        let sql = """
-            \(recencyCteLogic)
-            SELECT 
-                L.tagId,
-                SUM(CASE WHEN L.isActive = 0 THEN 1 ELSE 0 END) as inactiveCount,
-                SUM(CASE WHEN L.isActive = 1 THEN 1 ELSE 0 END) as activeCount,
-                SUM(CASE 
-                    WHEN L.isActive = 1 
-                     AND (G.globalLastUsed < ? OR G.globalLastUsed IS NULL)
-                     AND (D.domainLastUsed < ? OR D.domainLastUsed IS NULL)
-                    THEN 1 ELSE 0 
-                END) as availableCount
-            FROM leads L
-            LEFT JOIN globalRecent G ON L.email = G.email
-            LEFT JOIN domainRecent D ON L.email = D.email
-            WHERE L.tagId IN (\(placeholders))
-            GROUP BY L.tagId
+        )
         """
-
-        var bindings: [Binding?] = [domainId, cutoffDates.globalCutoffString, cutoffDates.domainCutoffString]
-        bindings.append(contentsOf: tagIds.map { $0 as Binding? })
-
-        var results: [Int64: (Int, Int, Int)] = [:]
-
-        do {
-            let rows = try await DatabaseActor.shared.dbPrepare(sql: sql, params: bindings)
-
-            for row in rows {
-                let id = row[0] as? Int64 ?? 0
-                let inactive = Int(row[1] as? Int64 ?? 0)
-                let active = Int(row[2] as? Int64 ?? 0)
-                let available = Int(row[3] as? Int64 ?? 0)
-
-                results[id] = (inactive, active, available)
-            }
-        } catch {
-            print("❌ Batch Stats Failed: \(error)")
-        }
-
-        return results
     }
+
+    // MARK: - 1. Get Emails (Fetch & Update)
 
     static func getEmails(
         tagId: Int64,
@@ -813,45 +701,147 @@ enum LeadsTable {
                 lastUsedAt = ?,
                 exportId = ?
             WHERE id IN (
-                \(recencyCteLogic)
                 SELECT L.id
-                \(validLeadsWhereLogic)
+                FROM leads L
+                WHERE L.tagId = ?
+                  AND L.isActive = 1
+                  \(notUsedRecentlyLogic)
                 ORDER BY L.randomOrder
                 LIMIT ?
             )
             RETURNING email;
         """
 
+        // BINDING ORDER:
+        // 1. UPDATE params (Now, ExportId)
+        // 2. Main Query params (TagId)
+        // 3. Logic params (DomainId, GlobalDate, DomainId, DomainDate)
+        // 4. LIMIT param (Amount)
         let bindings: [Binding?] = [
             cutoffDates.nowString,
             exportId,
-            domainId,
             tagId,
-            cutoffDates.globalCutoffString,
-            cutoffDates.domainCutoffString,
-            amount,
+            domainId, // for Ht.domainId != ?
+            cutoffDates.globalCutoffString, // for Global Limit
+            domainId, // for Ht.domainId = ?
+            cutoffDates.domainCutoffString, // for Domain Limit
+            amount
         ]
 
         do {
             let stmt = try await DatabaseActor.shared.dbPrepare(sql: updateSQL, params: bindings)
-
             var emails: [String] = []
             for row in stmt {
-                if let email = row[0] as? String {
-                    emails.append(email)
-                }
+                if let email = row[0] as? String { emails.append(email) }
             }
-
-            if !emails.isEmpty {
-                print("🧹 Fetched and deactivated \(emails.count) leads.")
-            }
+            if !emails.isEmpty { print("🧹 Fetched \(emails.count) leads.") }
             return emails
-        }
-
-        catch {
+        } catch {
             print("❌ getEmails failed:", error)
             return []
         }
+    }
+
+    // MARK: - 2. Single Tag Stats
+
+    static func getTagStats(
+        tagId: Int64,
+        domainId: Int64,
+        domainUseLimit: Int,
+        globalUseLimit: Int
+    ) async -> (inactiveLeadsCount: Int, activeLeadsCount: Int, availableLeadsCount: Int) {
+        let cutoffDates = getCutoffDates(domainUseLimit: domainUseLimit, globalUseLimit: globalUseLimit)
+
+        let sql = """
+            SELECT
+                COUNT(CASE WHEN isActive = 0 THEN 1 END),
+                COUNT(CASE WHEN isActive = 1 THEN 1 END),
+                COUNT(CASE 
+                    WHEN isActive = 1 
+                    \(notUsedRecentlyLogic)
+                    THEN 1 
+                END)
+            FROM leads L
+            WHERE L.tagId = ?
+        """
+
+        // BINDING ORDER: Logic params -> TagId
+        let bindings: [Binding?] = [
+            domainId,
+            cutoffDates.globalCutoffString,
+            domainId,
+            cutoffDates.domainCutoffString,
+            tagId
+        ]
+
+        do {
+            let stmt = try await DatabaseActor.shared.dbPrepare(sql: sql, params: bindings)
+            guard let row = stmt.makeIterator().next() else { return (0, 0, 0) }
+
+            return (
+                Int(row[0] as? Int64 ?? 0),
+                Int(row[1] as? Int64 ?? 0),
+                Int(row[2] as? Int64 ?? 0)
+            )
+        } catch {
+            print("❌ getStats failed:", error)
+            return (0, 0, 0)
+        }
+    }
+
+    // MARK: - 3. Batch Tag Stats
+
+    static func getBatchTagStats(
+        tagIds: [Int64],
+        domainId: Int64,
+        domainUseLimit: Int,
+        globalUseLimit: Int
+    ) async -> [Int64: (inactive: Int, active: Int, available: Int)] {
+        if tagIds.isEmpty { return [:] }
+
+        let cutoffDates = getCutoffDates(domainUseLimit: domainUseLimit, globalUseLimit: globalUseLimit)
+        let placeholders = Array(repeating: "?", count: tagIds.count).joined(separator: ",")
+
+        let sql = """
+            SELECT
+                L.tagId,
+                SUM(CASE WHEN L.isActive = 0 THEN 1 ELSE 0 END),
+                SUM(CASE WHEN L.isActive = 1 THEN 1 ELSE 0 END),
+                SUM(CASE 
+                    WHEN L.isActive = 1 
+                    \(notUsedRecentlyLogic)
+                    THEN 1 ELSE 0 
+                END)
+            FROM leads L
+            WHERE L.tagId IN (\(placeholders))
+            GROUP BY L.tagId
+        """
+
+        // BINDING ORDER: Logic params -> TagIds
+        var bindings: [Binding?] = [
+            domainId,
+            cutoffDates.globalCutoffString,
+            domainId,
+            cutoffDates.domainCutoffString
+        ]
+        bindings.append(contentsOf: tagIds.map { $0 as Binding? })
+
+        var results: [Int64: (Int, Int, Int)] = [:]
+
+        do {
+            let rows = try await DatabaseActor.shared.dbPrepare(sql: sql, params: bindings)
+            for row in rows {
+                let id = row[0] as? Int64 ?? 0
+                results[id] = (
+                    Int(row[1] as? Int64 ?? 0),
+                    Int(row[2] as? Int64 ?? 0),
+                    Int(row[3] as? Int64 ?? 0)
+                )
+            }
+        } catch {
+            print("❌ Batch Stats Failed: \(error)")
+        }
+        return results
     }
 }
 
