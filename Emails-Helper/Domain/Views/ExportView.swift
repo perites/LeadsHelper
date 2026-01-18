@@ -51,6 +51,7 @@ struct DomainExportView: View {
             HStack {
                 GoBackButtonView(mode: $mode, goBackMode: .info)
                 Spacer()
+                RepeatInput
                 ExportButton
             }
             .padding(.top, 10)
@@ -148,6 +149,31 @@ struct DomainExportView: View {
             .padding(8)
             .background(Color.gray.opacity(0.1))
             .cornerRadius(8)
+        }
+    }
+
+    private var RepeatInput: some View {
+        HStack {
+            Text("Repeat export for")
+                .font(.body)
+            TextField(
+                "\(viewModel.repeatCount)",
+                value: $viewModel.repeatCount,
+                format: .number,
+            )
+                .font(.body)
+                .frame(width: 40)
+                .padding(5)
+                .background(RoundedRectangle(cornerRadius: 3).stroke(Color.gray.opacity(0.5)))
+                .multilineTextAlignment(.center)
+                .textFieldStyle(PlainTextFieldStyle())
+            Text(viewModel.repeatCount == 1 ? "time" : "times")
+                .font(.body)
+                .padding(.trailing, 10)
+        }.onChange(of: viewModel.repeatCount) { _, newValue in
+            if newValue < 1 {
+                viewModel.repeatCount = 1
+            }
         }
     }
 

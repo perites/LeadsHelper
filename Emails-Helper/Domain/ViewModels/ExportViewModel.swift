@@ -104,6 +104,8 @@ class ExportViewModel: ObservableObject {
     @Published var folderName: String
     @Published var isSeparateFiles: Bool
 
+    @Published var repeatCount: Int
+
     @ObservedObject var domain: DomainViewModel
 
     let allMergeTags: [String] = [
@@ -125,6 +127,8 @@ class ExportViewModel: ObservableObject {
 
     init(domain: DomainViewModel) {
         _domain = .init(initialValue: domain)
+
+        _repeatCount = .init(initialValue: 1)
 
         _fileName = .init(
             initialValue: domain.lastExportRequest?.fileName
@@ -181,67 +185,72 @@ class ExportViewModel: ObservableObject {
             return .noFolder
         }
 
-        let draftRequest = ExportRequest(
-            fileName: "Processing...",
-            folderName: "Processing...",
-            isSeparateFiles: isSeparateFiles,
-            tags: tagsRequests // Initial state (requested amounts)
-        )
-
-        guard let exportId = await ExportTable.addExport(domainId: domain.id, exportRequest: draftRequest) else {
+        guard repeatCount > 0 else {
             return .failure
         }
 
-        let fulfilledTagsRequests = await fulfillTagsRequests(exportId: exportId)
+        for _ in 0 ..< repeatCount {
+            let draftRequest = ExportRequest(
+                fileName: "Processing...",
+                folderName: "Processing...",
+                isSeparateFiles: isSeparateFiles,
+                tags: tagsRequests // Initial state (requested amounts)
+            )
 
-        tagsRequests = fulfilledTagsRequests
+            guard let exportId = await ExportTable.addExport(domainId: domain.id, exportRequest: draftRequest) else {
+                return .failure
+            }
 
-        if isSeparateFiles {
-            for tagRequest in tagsRequests {
-                guard let requestedAmount = tagRequest.requestedAmount, requestedAmount > 0 else {
-                    continue
+            let fulfilledTagsRequests = await fulfillTagsRequests(exportId: exportId)
+
+            tagsRequests = fulfilledTagsRequests
+
+            if isSeparateFiles {
+                for tagRequest in tagsRequests {
+                    guard let requestedAmount = tagRequest.requestedAmount, requestedAmount > 0 else {
+                        continue
+                    }
+
+                    let caluculatedFolderName = applyMergeTags(
+                        to: folderName,
+                        with: tagRequest
+                    )
+
+                    let calculatedfileName = applyMergeTags(
+                        to: fileName,
+                        with: tagRequest
+                    )
+
+                    let content = formatEmails(for: tagRequest.emails)
+
+                    let subfolder = folder.appendingPathComponent("\(caluculatedFolderName)/")
+                    ensureFolderExists(at: subfolder)
+
+                    let fileURL = subfolder.appendingPathComponent("\(calculatedfileName).csv")
+
+                    saveFile(content: content, path: fileURL)
                 }
 
-                let caluculatedFolderName = applyMergeTags(
-                    to: folderName,
-                    with: tagRequest
-                )
+            } else {
+                let calculatedfileName = applyMergeTags(to: fileName)
 
-                let calculatedfileName = applyMergeTags(
-                    to: fileName,
-                    with: tagRequest
-                )
-
-                let content = formatEmails(for: tagRequest.emails)
-
-                let subfolder = folder.appendingPathComponent("\(caluculatedFolderName)/")
-                ensureFolderExists(at: subfolder)
-
-                let fileURL = subfolder.appendingPathComponent("\(calculatedfileName).csv")
+                var emails = tagsRequests.flatMap { $0.emails }
+                emails.shuffle()
+                let content = formatEmails(for: emails)
+                let fileURL = folder.appendingPathComponent("\(calculatedfileName).csv")
 
                 saveFile(content: content, path: fileURL)
             }
 
-        } else {
-            let calculatedfileName = applyMergeTags(to: fileName)
+            let finalRequest = ExportRequest(
+                fileName: "\(applyMergeTags(to: fileName))$|-|-|$\(fileName)",
+                folderName: "\(applyMergeTags(to: folderName))$|-|-|$\(folderName)",
+                isSeparateFiles: isSeparateFiles,
+                tags: tagsRequests // Now contains the actual emails/counts
+            )
 
-            var emails = tagsRequests.flatMap { $0.emails }
-            emails.shuffle()
-            let content = formatEmails(for: emails)
-            let fileURL = folder.appendingPathComponent("\(calculatedfileName).csv")
-
-            saveFile(content: content, path: fileURL)
+            await ExportTable.updateExport(id: exportId, finalRequest: finalRequest)
         }
-
-        let finalRequest = ExportRequest(
-            fileName: "\(applyMergeTags(to: fileName))$|-|-|$\(fileName)",
-            folderName: "\(applyMergeTags(to: folderName))$|-|-|$\(folderName)",
-            isSeparateFiles: isSeparateFiles,
-            tags: tagsRequests // Now contains the actual emails/counts
-        )
-
-        await ExportTable.updateExport(id: exportId, finalRequest: finalRequest)
-
         return .success
     }
 
