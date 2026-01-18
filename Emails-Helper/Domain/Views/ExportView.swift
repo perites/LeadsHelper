@@ -41,6 +41,10 @@ struct DomainExportView: View {
             HStack {
                 Text("Total:")
                 Spacer()
+                Button("Clear Requests") {
+                    viewModel.clearAllRequests()
+
+                }.font(.callout)
                 Text(
                     "\(viewModel.tagsRequests.map { Int($0.requestedAmount ?? 0) }.reduce(0, +))"
                 )
@@ -94,20 +98,59 @@ struct DomainExportView: View {
             TextField("File name", text: $viewModel.fileName)
                 .font(.body)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
+
+            Spacer()
+            MergeTagsMenu
         }
+    }
+
+    private var MergeTagsMenu: some View {
+        Menu {
+            Text("Merge Tags (Click to Copy)")
+            Divider()
+            ForEach(viewModel.allMergeTags, id: \.self) { tag in
+                Button {
+                    copyToClipboard(tag)
+                    ToastManager.shared
+                        .show(
+                            style: .info,
+                            message: "Copied to clipboard: \(tag)",
+                            duration: 1.5
+                        )
+                } label: {
+                    Text(tag)
+                    Image(systemName: "doc.on.doc")
+                }
+            }
+        } label: {
+            Image(systemName: "info.circle")
+            Text("Merge Tags")
+        }
+        .buttonStyle(PlainButtonStyle())
+        .padding(4)
+        .contentShape(Rectangle())
+        .background(Color.gray.opacity(0.3))
+        .cornerRadius(8)
+        .shadow(radius: 2)
+    }
+
+    private func copyToClipboard(_ text: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
     }
 
     private var SaveFolderView: some View {
         if let folder = viewModel.domain.saveFolder {
             if !viewModel.isSeparateFiles {
                 Text(
-                    "Save Path: \(folder.path)/\(viewModel.applyMergeTags(to: viewModel.fileName)).csv"
+                    "Save Path Preview: \(folder.path)/\(viewModel.applyMergeTags(to: viewModel.fileName)).csv"
                 )
                 .font(.caption)
                 .foregroundColor(.gray)
             } else {
                 Text(
-                    "Save Path: \(folder.path)/\(viewModel.applyMergeTags(to: viewModel.folderName))/\(viewModel.applyMergeTags(to: viewModel.fileName)).csv"
+                    "Save Path Preview: \(folder.path)/\(viewModel.applyMergeTags(to: viewModel.folderName))/\(viewModel.applyMergeTags(to: viewModel.fileName)).csv"
                 )
                 .font(.caption)
                 .foregroundColor(.gray)
@@ -161,12 +204,12 @@ struct DomainExportView: View {
                 value: $viewModel.repeatCount,
                 format: .number,
             )
-                .font(.body)
-                .frame(width: 40)
-                .padding(5)
-                .background(RoundedRectangle(cornerRadius: 3).stroke(Color.gray.opacity(0.5)))
-                .multilineTextAlignment(.center)
-                .textFieldStyle(PlainTextFieldStyle())
+            .font(.body)
+            .frame(width: 40)
+            .padding(5)
+            .background(RoundedRectangle(cornerRadius: 3).stroke(Color.gray.opacity(0.5)))
+            .multilineTextAlignment(.center)
+            .textFieldStyle(PlainTextFieldStyle())
             Text(viewModel.repeatCount == 1 ? "time" : "times")
                 .font(.body)
                 .padding(.trailing, 10)

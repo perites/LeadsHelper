@@ -154,13 +154,22 @@ class ExportViewModel: ObservableObject {
             }
         )
     }
-
+    
+    
+    func clearAllRequests() {
+        for index in tagsRequests.indices {
+            tagsRequests[index].requestedAmount = nil
+        }
+        ToastManager.shared
+            .show(style: .info, message: "All requests cleared", duration: 1.5)
+    }
+    
     func applyMergeTags(to template: String, with tagRequest: TagRequest? = nil) -> String {
         let mergeTags = [
             "%d-name%": domain.name,
             "%d-abrr%": domain.abbreviation,
-            "%day%": String(Calendar.current.component(.day, from: Date())),
-            "%month%": String(Calendar.current.component(.month, from: Date())),
+            "%day%": String(format: "%02d", Calendar.current.component(.day, from: Date())),
+            "%month%": String(format: "%02d", Calendar.current.component(.month, from: Date())),
             "%t-all%": stringTagsRequests,
             "%t-name%": tagRequest?.tagName ?? "TestTag",
             "%t-amount%": tagRequest?.formatNumber(tagRequest!.requestedAmount ?? 0) ?? "2.5k",
