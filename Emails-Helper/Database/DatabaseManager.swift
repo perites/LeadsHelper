@@ -117,14 +117,69 @@ import SQLite
         ExportTable.createTable(in: db)
 
         try? db.execute("""
-            CREATE INDEX IF NOT EXISTS idx_leads_tagId ON leads(tagId);
-            CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email);
-            CREATE INDEX IF NOT EXISTS idx_leads_isActive ON leads(isActive);
-            CREATE INDEX IF NOT EXISTS idx_tags_domainId ON tags(domainId);
-            CREATE INDEX IF NOT EXISTS idx_leads_tag_active ON leads(tagId, isActive);
+            CREATE INDEX IF NOT EXISTS idx_leads_selection ON leads(tagId, isActive, randomOrder);
             CREATE INDEX IF NOT EXISTS idx_leads_email_lastused ON leads(email, lastUsedAt);
-            CREATE INDEX IF NOT EXISTS idx_tags_domain ON tags(id, domainId);
         """)
+    }
+
+    func debugPrintIndexes() {
+        do {
+            // Get list of all tables
+            let tables = try db.prepare("SELECT name FROM sqlite_master WHERE type='table'")
+
+            for table in tables {
+                guard let tableName = table[0] as? String else { continue }
+                print("\n--- Indexes for table: \(tableName) ---")
+
+                // Get indexes for this table
+                let indexes = try db.prepare("PRAGMA index_list('\(tableName)')")
+
+                for index in indexes {
+                    // FIX: Use optional casting for String and Int64
+                    let indexName = index[1] as? String ?? "Unknown"
+
+                    // SQLite returns Int64. We cast to Int64, default to 0 if nil.
+                    let uniqueVal = index[2] as? Int64 ?? 0
+                    let isUnique = uniqueVal == 1
+
+                    // Get columns inside this index
+                    let columns = try db.prepare("PRAGMA index_info('\(indexName)')")
+                    let columnNames = columns.compactMap { $0[2] as? String }.joined(separator: ", ")
+
+                    print("  • \(indexName) \(isUnique ? "[UNIQUE]" : "")")
+                    print("    Columns: (\(columnNames))")
+                }
+            }
+        } catch {
+            print("Debug print failed: \(error)")
+        }
+    }
+
+    func optimizeIndexes() {
+        print("🧹 Starting Index Optimization...")
+
+        let indexesToDelete = [
+            // Leads Table redundancies
+            "idx_leads_tagId",
+            "idx_leads_tag_active",
+            "idx_leads_email",
+            "idx_leads_isActive",
+
+            // Tags Table redundancies
+            "idx_tags_domain",
+            "idx_tags_domainId"
+        ]
+
+        for indexName in indexesToDelete {
+            do {
+                try db.run("DROP INDEX IF EXISTS \(indexName)")
+                print("   - Deleted redundant index: \(indexName)")
+            } catch {
+                print("   - Error deleting \(indexName): \(error)")
+            }
+        }
+
+        print("✅ Index Optimization Complete.")
     }
 
     func cleanupDatabase() {
@@ -172,18 +227,24 @@ import SQLite
     }
 
     func addLeadsBulk(newEmails: [String], newImportId: Int64, newTagId: Int64) {
+        let sql = """
+            INSERT INTO leads (email, tagId, importId, isActive, randomOrder)
+            VALUES (?, ?, ?, 1, ?)
+            ON CONFLICT(email, tagId) DO UPDATE SET 
+                isActive = 1, 
+                importId = excluded.importId, 
+                randomOrder = excluded.randomOrder;
+        """
+
         do {
             try db.transaction {
+                let stmt = try db.prepare(sql)
+
                 for newEmail in newEmails {
-                    let sql = """
-                        INSERT INTO leads (email, tagId, importId, isActive, randomOrder)
-                        VALUES (?, ?, ?, 1, ?)
-                        ON CONFLICT(email, tagId) DO UPDATE SET isActive = 1, importId = excluded.importId, randomOrder = excluded.randomOrder;
-                    """
-                    try db.run(sql, [newEmail, newTagId, newImportId, Double.random(in: 0 ..< 1)])
+                    try stmt.run(newEmail, newTagId, newImportId, Double.random(in: 0 ..< 1))
                 }
             }
-            print(" Successfully inserted \(newEmails.count) leads in one transaction")
+            print("Successfully inserted \(newEmails.count) leads in one transaction")
         } catch {
             print("Failed to add leads: \(error)")
         }
