@@ -15,7 +15,16 @@ class ToastManager: ObservableObject {
 
     private init() {}
 
-    func show(style: ToastStyle, message: String, duration: Double = 6) {
+    func show(
+        style: ToastStyle,
+        message: String,
+        duration: Double = 6,
+        removeSameOld: Bool = false
+    ) {
+        if removeSameOld {
+            toasts.filter { $0.message == message }.forEach(dismiss)
+        }
+
         let toast = Toast(style: style, message: message, duration: duration)
         toasts.append(toast)
 
@@ -30,9 +39,13 @@ class ToastManager: ObservableObject {
         }
     }
 
-    func dismissAll() {
+    func dismissAll(message: String? = nil) {
         withAnimation {
-            self.toasts.removeAll()
+            if let message {
+                self.toasts.removeAll { $0.message == message }
+            } else {
+                self.toasts.removeAll()
+            }
         }
     }
 }

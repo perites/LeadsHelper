@@ -37,8 +37,8 @@ import SQLite
         if !fm.fileExists(atPath: folder.path) {
             try fm.createDirectory(at: folder, withIntermediateDirectories: true)
         }
-//        let dbURL = folder.appendingPathComponent("emails-helper-db-TEST.sqlite3")
-        let dbURL = folder.appendingPathComponent("emails-helper-db.sqlite3")
+        let dbURL = folder.appendingPathComponent("emails-helper-db-TEST.sqlite3")
+//        let dbURL = folder.appendingPathComponent("emails-helper-db.sqlite3")
 
         return try Connection(dbURL.path)
     }

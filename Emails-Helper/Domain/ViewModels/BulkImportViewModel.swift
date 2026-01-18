@@ -40,9 +40,12 @@ class ImportFile: ObservableObject, Identifiable {
                 return
             }
 
-            let emailsFromFile = EmailsInputViewModel.extractValidEmails(from: dataFrame)
+            let emailsFromFile = EmailsInputViewModel.extractValidEmails(
+                from: dataFrame,
+                sourceName: url.lastPathComponent
+            )
 
-            allEmails.append(contentsOf: emailsFromFile ?? [])
+            allEmails.append(contentsOf: emailsFromFile)
 
             let uniqueEmails = Array(Set(allEmails))
             

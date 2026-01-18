@@ -35,8 +35,8 @@ class EmailsInputViewModel: ObservableObject {
         }
 
         return nil
-        
     }
+
     enum LeadSource {
         case files([URL])
         case text(String)
@@ -65,11 +65,14 @@ class EmailsInputViewModel: ObservableObject {
         var allEmails: [String] = []
         
         for url in urls {
-            
             guard let dataFrame = Self.getDataFrameFrom(url: url) else { continue }
             
-            let emailsFromFile = Self.extractValidEmails(from: dataFrame)
-            allEmails.append(contentsOf: emailsFromFile ?? [])
+            let emailsFromFile = Self.extractValidEmails(
+                from: dataFrame,
+                sourceName: url.lastPathComponent
+            )
+            
+            allEmails.append(contentsOf: emailsFromFile)
         }
         
         let uniqueEmails = Array(Set(allEmails))
@@ -84,16 +87,16 @@ class EmailsInputViewModel: ObservableObject {
         guard let csvData = text.data(using: .utf8) else { return }
         let dataFrame = try? DataFrame(csvData: csvData)
         guard let dataFrame else { return }
-        let emails = Self.extractValidEmails(from: dataFrame)
+        let emails = Self.extractValidEmails(from: dataFrame, sourceName: "Input Text")
         
         guard !Task.isCancelled else { return }
         await MainActor.run {
-            emailsFromText = Array(emails ?? [])
+            emailsFromText = Array(emails)
         }
     }
     
-    static func getDataFrameFrom(url:URL) -> DataFrame? {
-        guard url.startAccessingSecurityScopedResource() else { return nil}
+    static func getDataFrameFrom(url: URL) -> DataFrame? {
+        guard url.startAccessingSecurityScopedResource() else { return nil }
         defer { url.stopAccessingSecurityScopedResource() }
         
         let options = CSVReadingOptions(
@@ -103,19 +106,36 @@ class EmailsInputViewModel: ObservableObject {
         let dataFrame = try? DataFrame(contentsOfCSVFile: url, options: options)
         
         return dataFrame
-        
     }
     
-    static func extractValidEmails(from dataFrame: DataFrame) -> Set<String>? {
+    static func extractValidEmails(from dataFrame: DataFrame, sourceName: String) -> Set<String> {
         guard let emailColumn = dataFrame.columns.first(where: {
             $0.name
                 .lowercased()
                 .trimmingCharacters(in: .whitespaces)
                 .contains("email")
         }) else {
+            Task { await MainActor.run {
+                ToastManager.shared
+                    .show(
+                        style: .warning,
+                        message: "'Email' column not found in \(sourceName)",
+                        duration: 100,
+                        removeSameOld: true,
+                    )
+                
+            }}
+            
             return []
         }
-      
+        
+        if sourceName == "Input Text" {
+            Task { await MainActor.run {
+                ToastManager.shared.dismissAll(message: "'Email' column not found in Input Text")
+                
+            }}
+        }
+        
         let emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
         
         let emailColumnValues = dataFrame[emailColumn.name, String.self]
@@ -126,7 +146,7 @@ class EmailsInputViewModel: ObservableObject {
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { $0.wholeMatch(of: emailRegex) != nil }
         )
-        
+            
         return validEmails
     }
 }
