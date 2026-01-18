@@ -37,8 +37,8 @@ import SQLite
         if !fm.fileExists(atPath: folder.path) {
             try fm.createDirectory(at: folder, withIntermediateDirectories: true)
         }
-        let dbURL = folder.appendingPathComponent("emails-helper-db-TEST.sqlite3")
-//        let dbURL = folder.appendingPathComponent("emails-helper-db.sqlite3")
+//        let dbURL = folder.appendingPathComponent("emails-helper-db-TEST.sqlite3")
+        let dbURL = folder.appendingPathComponent("emails-helper-db.sqlite3")
 
         return try Connection(dbURL.path)
     }
@@ -120,6 +120,9 @@ import SQLite
             CREATE INDEX IF NOT EXISTS idx_leads_selection ON leads(tagId, isActive, randomOrder);
             CREATE INDEX IF NOT EXISTS idx_leads_email_lastused ON leads(email, lastUsedAt);
         """)
+        
+        optimizeIndexes()
+        debugPrintIndexes()
     }
 
     func debugPrintIndexes() {
