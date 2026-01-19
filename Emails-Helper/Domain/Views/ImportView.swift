@@ -71,7 +71,8 @@ struct DomainImportView: View {
                     }
                     
                     guard let allEmails = emailsInputViewModel.emailsAll,
-                          let inputType = emailsInputViewModel.inputType
+                          let inputType = emailsInputViewModel.inputType,
+                          allEmails.count > 0
                     else {
                         ToastManager.shared.show(style: .warning, message: "Wait for Leads to load")
                         isImporting = false

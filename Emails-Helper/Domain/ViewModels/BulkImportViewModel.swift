@@ -87,7 +87,9 @@ class BulkImportViewModel: ObservableObject {
     func importLeads(importName: String) async -> ImportResult {
         let start = Date()
         
-        guard importFiles.filter({ $0.emails == nil }).isEmpty else {
+        guard importFiles.filter({ $0.emails == nil }).isEmpty,
+              importFiles.filter({ $0.emails!.count < 1 }).isEmpty
+        else {
             return .loading
         }
         
