@@ -299,7 +299,7 @@ class ExportViewModel: ObservableObject {
             for email in emails {
                 let domainAbbrivation = domain.abbreviation
 
-                let row = "\(email), \(email.replacingOccurrences(of: "@", with: domainAbbrivation))\n"
+                let row = "\(email),\(email.replacingOccurrences(of: "@", with: domainAbbrivation))\n"
                 strEmails += row
             }
 
@@ -312,7 +312,7 @@ class ExportViewModel: ObservableObject {
                 let domainName = domain.name
                 let domainAbbrivation = domain.abbreviation
 
-                let row = "\(email), \(email + domainAbbrivation), \(domainName)\n"
+                let row = "\(email),\(email + domainAbbrivation),\(domainName)\n"
                 strEmails += row
             }
 
